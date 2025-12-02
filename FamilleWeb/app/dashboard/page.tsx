@@ -1,7 +1,7 @@
 import { createServerClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Calendar, Users, CheckSquare, Plus } from 'lucide-react'
+import { Calendar, Users, CheckSquare, Plus, List } from 'lucide-react'
 
 async function getUserFamily(supabase: any, userId: string) {
   const { data } = await supabase
@@ -89,7 +89,7 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-6 mb-8">
+      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <Link href="/dashboard/family" className="card hover:shadow-lg transition-shadow">
           <div className="flex items-center gap-4">
             <div className="bg-primary-100 p-3 rounded-lg">
@@ -122,6 +122,18 @@ export default async function DashboardPage() {
             <div>
               <h3 className="font-semibold">Tâches</h3>
               <p className="text-sm text-gray-600">Gérer les tâches</p>
+            </div>
+          </div>
+        </Link>
+        
+        <Link href="/dashboard/lists" className="card hover:shadow-lg transition-shadow">
+          <div className="flex items-center gap-4">
+            <div className="bg-purple-100 p-3 rounded-lg">
+              <List className="w-6 h-6 text-purple-600" />
+            </div>
+            <div>
+              <h3 className="font-semibold">Listes partagées</h3>
+              <p className="text-sm text-gray-600">Listes de courses, etc.</p>
             </div>
           </div>
         </Link>

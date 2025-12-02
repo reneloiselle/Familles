@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useAuth } from '@/app/providers'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { Calendar, Users, CheckSquare, LogOut, Home } from 'lucide-react'
+import { Calendar, Users, CheckSquare, LogOut, Home, List } from 'lucide-react'
 
 export function Navbar() {
   const { user, loading } = useAuth()
@@ -44,6 +44,10 @@ export function Navbar() {
             <Link href="/dashboard/tasks" className="flex items-center gap-2 text-gray-700 hover:text-primary-600">
               <CheckSquare className="w-5 h-5" />
               <span>Tâches</span>
+            </Link>
+            <Link href="/dashboard/lists" className="flex items-center gap-2 text-gray-700 hover:text-primary-600">
+              <List className="w-5 h-5" />
+              <span>Listes</span>
             </Link>
             
             <button
