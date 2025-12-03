@@ -8,31 +8,31 @@ async function getUserFamily(supabase: any, userId: string) {
     .select('id, family_id, role, families(id, name)')
     .eq('user_id', userId)
     .single()
-  
+
   return data
 }
 
 async function getFamilyMembers(supabase: any, familyId: string) {
   const { data } = await supabase
     .from('family_members')
-    .select('id, user_id, role')
+    .select('id, user_id, role, avatar_url')
     .eq('family_id', familyId)
-  
+
   return data || []
 }
 
 async function getTasks(supabase: any, familyId: string, status?: string) {
   let query = supabase
     .from('tasks')
-    .select('*, family_members(id, user_id, role)')
+    .select('*, family_members(id, user_id, role, avatar_url)')
     .eq('family_id', familyId)
-  
+
   if (status && status !== 'all') {
     query = query.eq('status', status)
   }
-  
+
   const { data } = await query.order('due_date', { ascending: true }).order('created_at', { ascending: false })
-  
+
   return data || []
 }
 
@@ -49,7 +49,7 @@ export default async function TasksPage({
   }
 
   const familyMember = await getUserFamily(supabase, user.id)
-  
+
   if (!familyMember) {
     redirect('/dashboard/family')
   }

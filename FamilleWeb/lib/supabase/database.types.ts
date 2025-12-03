@@ -39,6 +39,7 @@ export interface Database {
           name: string | null
           invitation_status: 'pending' | 'accepted' | 'declined' | null
           created_at: string
+          avatar_url: string | null
         }
         Insert: {
           id?: string
@@ -49,6 +50,7 @@ export interface Database {
           name?: string | null
           invitation_status?: 'pending' | 'accepted' | 'declined' | null
           created_at?: string
+          avatar_url?: string | null
         }
         Update: {
           id?: string
@@ -59,6 +61,7 @@ export interface Database {
           name?: string | null
           invitation_status?: 'pending' | 'accepted' | 'declined' | null
           created_at?: string
+          avatar_url?: string | null
         }
       }
       schedules: {

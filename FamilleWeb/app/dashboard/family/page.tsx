@@ -8,18 +8,18 @@ async function getUserFamily(supabase: any, userId: string) {
     .select('*, families(*)')
     .eq('user_id', userId)
     .maybeSingle()
-  
+
   return data
 }
 
 async function getFamilyMembers(supabase: any, familyId: string) {
   const { data } = await supabase
     .from('family_members')
-    .select('id, user_id, role, family_id, created_at, email, name, invitation_status')
+    .select('id, user_id, role, family_id, created_at, email, name, invitation_status, avatar_url')
     .eq('family_id', familyId)
-  
+
   if (!data) return []
-  
+
   // Fetch emails for members with accounts using the SQL function
   const membersWithEmails = await Promise.all(
     data.map(async (member: any) => {
@@ -33,7 +33,7 @@ async function getFamilyMembers(supabase: any, familyId: string) {
       return member
     })
   )
-  
+
   return membersWithEmails
 }
 
@@ -48,7 +48,7 @@ export default async function FamilyPage() {
   const familyMember = await getUserFamily(supabase, user.id)
   const family = familyMember?.families
   const isParent = familyMember?.role === 'parent'
-  
+
   let familyMembers = []
   if (family) {
     familyMembers = await getFamilyMembers(supabase, family.id)
@@ -59,7 +59,7 @@ export default async function FamilyPage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-2">Gestion de la famille</h1>
         <p className="text-gray-600">
-          {family 
+          {family
             ? `Famille: ${family.name}`
             : 'Créez votre première famille ou rejoignez-en une existante'}
         </p>

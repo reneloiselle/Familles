@@ -19,6 +19,7 @@ interface Task {
     id: string
     user_id: string
     role: string
+    avatar_url?: string | null
   }
 }
 
@@ -26,6 +27,7 @@ interface FamilyMember {
   id: string
   user_id: string
   role: 'parent' | 'child'
+  avatar_url?: string | null
 }
 
 interface TaskManagementProps {
@@ -141,6 +143,12 @@ export function TaskManagement({
     if (!member) return 'Membre inconnu'
     if (member.user_id === user.id) return 'Vous'
     return `Membre ${member.id.slice(0, 8)}`
+  }
+
+  const getMemberAvatar = (memberId: string | null) => {
+    if (!memberId) return null
+    const member = familyMembers.find(m => m.id === memberId)
+    return member?.avatar_url || '👤'
   }
 
   const filteredTasks = statusFilter === 'all'
@@ -323,7 +331,7 @@ export function TaskManagement({
         <div className="card text-center py-12">
           <CheckCircle2 className="w-12 h-12 text-gray-400 mx-auto mb-4" />
           <p className="text-gray-500">
-            {statusFilter === 'all' 
+            {statusFilter === 'all'
               ? 'Aucune tâche pour le moment'
               : `Aucune tâche ${getStatusLabel(statusFilter).toLowerCase()}`
             }
@@ -334,11 +342,10 @@ export function TaskManagement({
           {filteredTasks.map((task) => (
             <div
               key={task.id}
-              className={`card border-l-4 ${
-                task.status === 'completed' ? 'border-green-500' :
-                task.status === 'in_progress' ? 'border-blue-500' :
-                'border-yellow-500'
-              }`}
+              className={`card border-l-4 ${task.status === 'completed' ? 'border-green-500' :
+                  task.status === 'in_progress' ? 'border-blue-500' :
+                    'border-yellow-500'
+                }`}
             >
               <div className="flex items-start justify-between">
                 <div className="flex-1">
@@ -349,14 +356,17 @@ export function TaskManagement({
                       {getStatusLabel(task.status)}
                     </span>
                   </div>
-                  
+
                   {task.description && (
                     <p className="text-gray-600 mb-3">{task.description}</p>
                   )}
-                  
+
                   <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
                     <span>
-                      Assigné à: <strong>{getMemberName(task.assigned_to)}</strong>
+                      Assigné à: <strong>
+                        {task.assigned_to && <span className="mr-1 text-lg">{getMemberAvatar(task.assigned_to)}</span>}
+                        {getMemberName(task.assigned_to)}
+                      </strong>
                     </span>
                     {task.due_date && (
                       <span>
@@ -391,7 +401,7 @@ export function TaskManagement({
                       )}
                     </>
                   )}
-                  
+
                   {task.status === 'completed' && (
                     <button
                       onClick={() => updateTaskStatus(task.id, 'pending')}
@@ -401,7 +411,7 @@ export function TaskManagement({
                       Rouvrir
                     </button>
                   )}
-                  
+
                   {(task.created_by === user.id || familyMember.role === 'parent') && (
                     <button
                       onClick={() => deleteTask(task.id)}

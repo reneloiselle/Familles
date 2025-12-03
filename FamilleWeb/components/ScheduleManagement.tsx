@@ -18,6 +18,7 @@ interface Schedule {
     id: string
     user_id: string | null
     role: string
+    avatar_url?: string | null
   }
 }
 
@@ -27,6 +28,7 @@ interface FamilyMember {
   role: 'parent' | 'child'
   email?: string | null
   name?: string | null
+  avatar_url?: string | null
 }
 
 interface ScheduleManagementProps {
@@ -131,7 +133,7 @@ export function ScheduleManagement({
     const diff = date.getDate() - day + (day === 0 ? -6 : 1) // Adjust when day is Sunday (0)
     const monday = new Date(date)
     monday.setDate(date.getDate() - day + (day === 0 ? -6 : 1))
-    
+
     const days = []
     for (let i = 0; i < 7; i++) {
       const d = new Date(monday)
@@ -146,8 +148,8 @@ export function ScheduleManagement({
   const filteredSchedules = view === 'personal'
     ? schedules.filter(s => s.family_members?.user_id === user.id)
     : view === 'week'
-    ? schedules // Show all schedules for the week
-    : schedules.filter(s => s.date === selectedDate)
+      ? schedules // Show all schedules for the week
+      : schedules.filter(s => s.date === selectedDate)
 
   const groupedSchedules = filteredSchedules.reduce((acc: any, schedule) => {
     const key = schedule.date
@@ -163,6 +165,11 @@ export function ScheduleManagement({
     if (member.name) return member.name
     if (member.email) return member.email
     return `Membre ${member.id.slice(0, 8)}`
+  }
+
+  const getMemberAvatar = (memberId: string) => {
+    const member = familyMembers.find(m => m.id === memberId)
+    return member?.avatar_url || '👤'
   }
 
   return (
@@ -288,12 +295,12 @@ export function ScheduleManagement({
                 >
                   {familyMembers.map((member) => (
                     <option key={member.id} value={member.id}>
-                      {member.user_id === user.id 
-                        ? 'Vous' 
-                        : member.name 
-                          ? member.name 
-                          : member.email 
-                            ? member.email 
+                      {member.user_id === user.id
+                        ? 'Vous'
+                        : member.name
+                          ? member.name
+                          : member.email
+                            ? member.email
                             : `Membre ${member.id.slice(0, 8)}`}
                     </option>
                   ))}
@@ -398,7 +405,7 @@ export function ScheduleManagement({
               day: 'numeric'
             })}
           </h2>
-          
+
           {filteredSchedules.length === 0 ? (
             <p className="text-gray-500">Aucun horaire pour cette date</p>
           ) : (
@@ -411,7 +418,8 @@ export function ScheduleManagement({
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <h3 className="font-semibold">{schedule.title}</h3>
-                      <p className="text-sm text-gray-600 mt-1">
+                      <p className="text-sm text-gray-600 mt-1 flex items-center gap-2">
+                        <span className="text-lg">{getMemberAvatar(schedule.family_member_id)}</span>
                         {getMemberName(schedule.family_member_id)}
                       </p>
                       <div className="flex items-center gap-4 mt-2 text-sm text-gray-600">
@@ -501,7 +509,7 @@ export function ScheduleManagement({
             <CalendarIcon className="w-5 h-5" />
             Vue semaine - {weekDays[0] && new Date(weekDays[0]).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} au {weekDays[6] && new Date(weekDays[6]).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
           </h2>
-          
+
           <div className="overflow-x-auto">
             <table className="w-full border-collapse">
               <thead>
@@ -515,9 +523,8 @@ export function ScheduleManagement({
                     return (
                       <th
                         key={day}
-                        className={`border border-gray-300 bg-gray-100 p-3 text-center font-semibold min-w-[120px] ${
-                          isToday ? 'bg-primary-100' : ''
-                        }`}
+                        className={`border border-gray-300 bg-gray-100 p-3 text-center font-semibold min-w-[120px] ${isToday ? 'bg-primary-100' : ''
+                          }`}
                       >
                         <div className="font-bold">
                           {date.toLocaleDateString('fr-FR', { weekday: 'short' })}
@@ -550,6 +557,7 @@ export function ScheduleManagement({
                             {member.name || member.email || `Membre ${member.id.slice(0, 8)}`}
                           </span>
                         )}
+                        <span className="ml-2 text-xl">{member.avatar_url || '👤'}</span>
                         {member.role === 'parent' && (
                           <span className="ml-2 text-xs text-gray-500">(Parent)</span>
                         )}

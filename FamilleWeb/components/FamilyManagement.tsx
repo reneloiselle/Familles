@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2, Mail } from 'lucide-react'
+import { Plus, Trash2, Mail, Pencil, X } from 'lucide-react'
 import { User } from '@supabase/supabase-js'
 import { InvitationManager } from './InvitationManager'
 
@@ -14,6 +14,7 @@ interface FamilyMember {
   email?: string
   name?: string
   invitation_status?: 'pending' | 'accepted' | 'declined'
+  avatar_url?: string | null
 }
 
 interface Family {
@@ -33,6 +34,9 @@ export function FamilyManagement({ user, family, familyMember, familyMembers, is
   const [familyName, setFamilyName] = useState('')
   const [memberEmail, setMemberEmail] = useState('')
   const [memberRole, setMemberRole] = useState<'parent' | 'child'>('child')
+  const [memberAvatar, setMemberAvatar] = useState('👤')
+  const [editingMemberId, setEditingMemberId] = useState<string | null>(null)
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const router = useRouter()
@@ -128,6 +132,7 @@ export function FamilyManagement({ user, family, familyMember, familyMembers, is
           family_id: family.id,
           user_id: userId,
           role: memberRole,
+          avatar_url: memberAvatar,
         })
 
       if (addError) throw addError
@@ -135,6 +140,7 @@ export function FamilyManagement({ user, family, familyMember, familyMembers, is
       router.refresh()
       setMemberEmail('')
       setMemberRole('child')
+      setMemberAvatar('👤')
     } catch (err: any) {
       setError(err.message || 'Erreur lors de l\'ajout du membre')
     } finally {
@@ -165,6 +171,24 @@ export function FamilyManagement({ user, family, familyMember, familyMembers, is
       setLoading(false)
     }
   }
+
+  const updateMemberAvatar = async (memberId: string, newAvatar: string) => {
+    try {
+      const { error } = await supabase
+        .from('family_members')
+        .update({ avatar_url: newAvatar })
+        .eq('id', memberId)
+
+      if (error) throw error
+
+      router.refresh()
+      setEditingMemberId(null)
+    } catch (err: any) {
+      setError(err.message || 'Erreur lors de la mise à jour de l\'avatar')
+    }
+  }
+
+  const EMOJI_OPTIONS = ['👤', '👨', '👩', '👦', '👧', '👶', '👴', '👵', '🐶', '🐱', '🦊', '🐻', '🐼', '🦁', '🦄', '⚽', '🎮', '🎨', '📚', '🎵']
 
   if (!family) {
     return (
@@ -221,17 +245,38 @@ export function FamilyManagement({ user, family, familyMember, familyMembers, is
               className="flex items-center justify-between p-4 border rounded-lg"
             >
               <div className="flex items-center gap-3">
-                <div className="bg-primary-100 p-2 rounded-full">
-                  <Mail className="w-5 h-5 text-primary-600" />
+                <div className="relative">
+                  <div
+                    className={`bg-primary-100 w-10 h-10 rounded-full flex items-center justify-center text-xl cursor-pointer hover:bg-primary-200 transition-colors ${editingMemberId === member.id ? 'ring-2 ring-primary-500' : ''}`}
+                    onClick={() => setEditingMemberId(editingMemberId === member.id ? null : member.id)}
+                  >
+                    {member.avatar_url || <Mail className="w-5 h-5 text-primary-600" />}
+                  </div>
+                  {editingMemberId === member.id && (
+                    <div className="absolute top-12 left-0 z-10 bg-white shadow-lg rounded-lg p-2 border grid grid-cols-5 gap-1 w-48">
+                      {EMOJI_OPTIONS.map(emoji => (
+                        <button
+                          key={emoji}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            updateMemberAvatar(member.id, emoji)
+                          }}
+                          className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 rounded text-lg"
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <p className="font-medium">
-                    {member.user_id === user.id 
-                      ? 'Vous' 
-                      : member.name 
-                        ? member.name 
-                        : member.email 
-                          ? member.email 
+                    {member.user_id === user.id
+                      ? 'Vous'
+                      : member.name
+                        ? member.name
+                        : member.email
+                          ? member.email
                           : `Membre ${member.id.slice(0, 8)}`}
                     {!member.user_id && (
                       <span className="ml-2 text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
