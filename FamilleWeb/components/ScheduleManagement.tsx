@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { Plus, Calendar as CalendarIcon, Clock } from 'lucide-react'
+import { Plus, Calendar as CalendarIcon, Clock, Settings } from 'lucide-react'
 import { User } from '@supabase/supabase-js'
+import { CalendarSubscriptionManager } from './CalendarSubscriptionManager'
 
 interface Schedule {
   id: string
@@ -20,6 +21,8 @@ interface Schedule {
     role: string
     avatar_url?: string | null
   }
+  is_external?: boolean
+  external_color?: string
 }
 
 interface FamilyMember {
@@ -40,6 +43,14 @@ interface ScheduleManagementProps {
   initialView: string
 }
 
+interface Subscription {
+  id: string
+  family_member_id: string
+  url: string
+  name: string
+  color: string | null
+}
+
 export function ScheduleManagement({
   user,
   familyMember,
@@ -49,6 +60,9 @@ export function ScheduleManagement({
   initialView,
 }: ScheduleManagementProps) {
   const [showForm, setShowForm] = useState(false)
+  const [showSubscriptions, setShowSubscriptions] = useState(false)
+  const [externalSchedules, setExternalSchedules] = useState<Schedule[]>([])
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [selectedDate, setSelectedDate] = useState(initialDate)
   const [view, setView] = useState(initialView)
   const [formData, setFormData] = useState({
@@ -63,6 +77,69 @@ export function ScheduleManagement({
   const [error, setError] = useState('')
   const router = useRouter()
   const supabase = createClient()
+
+  useEffect(() => {
+    fetchExternalSchedules()
+  }, [familyMembers])
+
+  const fetchExternalSchedules = async () => {
+    // 1. Get all subscriptions for the family members
+    const { data: subs } = await supabase
+      .from('calendar_subscriptions')
+      .select('*')
+      .in('family_member_id', familyMembers.map(m => m.id))
+
+    if (!subs) return
+    setSubscriptions(subs)
+
+    // 2. Fetch events for each subscription
+    const allExternalEvents: Schedule[] = []
+
+    await Promise.all(subs.map(async (sub) => {
+      try {
+        const response = await fetch('/api/calendar/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: sub.url }),
+        })
+
+        if (!response.ok) return
+
+        const data = await response.json()
+        if (data.events) {
+          data.events.forEach((event: any) => {
+            // Convert to Schedule format
+            if (event.start_time) {
+              const startDate = new Date(event.start_time)
+              const endDate = event.end_time ? new Date(event.end_time) : new Date(startDate.getTime() + 3600000)
+
+              allExternalEvents.push({
+                id: `ext-${sub.id}-${event.uid || Math.random()}`,
+                family_member_id: sub.family_member_id,
+                title: event.title || 'Événement',
+                description: event.description || '',
+                start_time: startDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+                end_time: endDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+                date: startDate.toISOString().split('T')[0],
+                is_external: true,
+                external_color: sub.color || '#3B82F6',
+                family_members: {
+                  id: sub.family_member_id,
+                  user_id: null, // We don't need this for display
+                  role: 'child', // Placeholder
+                  avatar_url: getMemberAvatar(sub.family_member_id)
+                }
+              })
+            }
+          })
+        }
+      } catch (e) {
+        console.error('Error fetching calendar', sub.url, e)
+      }
+    }))
+
+    setExternalSchedules(allExternalEvents)
+  }
 
   const isParent = familyMember.role === 'parent'
 
@@ -151,7 +228,22 @@ export function ScheduleManagement({
       ? schedules // Show all schedules for the week
       : schedules.filter(s => s.date === selectedDate)
 
-  const groupedSchedules = filteredSchedules.reduce((acc: any, schedule) => {
+  // Merge internal and external schedules
+  const allSchedules = [...filteredSchedules]
+
+  // Filter external schedules based on view
+  const filteredExternalSchedules = view === 'personal'
+    ? externalSchedules.filter(s => s.family_member_id === familyMember.id)
+    : externalSchedules
+
+  // Apply date filter to external schedules
+  const relevantExternalSchedules = view === 'week'
+    ? filteredExternalSchedules.filter(s => weekDays.includes(s.date))
+    : filteredExternalSchedules.filter(s => s.date === selectedDate)
+
+  const finalSchedules = [...allSchedules, ...relevantExternalSchedules]
+
+  const groupedSchedules = finalSchedules.reduce((acc: any, schedule) => {
     const key = schedule.date
     if (!acc[key]) acc[key] = []
     acc[key].push(schedule)
@@ -220,7 +312,34 @@ export function ScheduleManagement({
           <Plus className="w-5 h-5" />
           Ajouter un horaire
         </button>
+        <button
+          onClick={() => setShowSubscriptions(!showSubscriptions)}
+          className="btn btn-secondary flex items-center gap-2"
+          title="Gérer les calendriers externes"
+        >
+          <Settings className="w-5 h-5" />
+        </button>
       </div>
+
+      {showSubscriptions && (
+        <div className="card border-blue-100 bg-blue-50">
+          <h2 className="text-lg font-semibold mb-4">Abonnements Calendriers (iCal)</h2>
+          <div className="grid md:grid-cols-2 gap-8">
+            {familyMembers.map(member => (
+              <div key={member.id}>
+                <h4 className="font-medium mb-2 flex items-center gap-2">
+                  <span className="text-xl">{member.avatar_url || '👤'}</span>
+                  {member.name || member.email || 'Membre'}
+                </h4>
+                <CalendarSubscriptionManager
+                  familyMemberId={member.id}
+                  onSubscriptionsChange={fetchExternalSchedules}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {(view === 'family' || view === 'week') && (
         <div className="card">
@@ -406,18 +525,24 @@ export function ScheduleManagement({
             })}
           </h2>
 
-          {filteredSchedules.length === 0 ? (
+          {finalSchedules.length === 0 ? (
             <p className="text-gray-500">Aucun horaire pour cette date</p>
           ) : (
             <div className="space-y-4">
-              {filteredSchedules.map((schedule) => (
+              {finalSchedules.map((schedule) => (
                 <div
                   key={schedule.id}
-                  className="border-l-4 border-primary-500 pl-4 py-3 bg-gray-50 rounded"
+                  className={`border-l-4 pl-4 py-3 bg-gray-50 rounded ${schedule.is_external ? '' : 'border-primary-500'}`}
+                  style={schedule.is_external ? { borderLeftColor: schedule.external_color } : {}}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <h3 className="font-semibold">{schedule.title}</h3>
+                      <h3 className="font-semibold flex items-center gap-2">
+                        {schedule.title}
+                        {schedule.is_external && (
+                          <span className="text-xs bg-gray-200 text-gray-600 px-1 rounded">iCal</span>
+                        )}
+                      </h3>
                       <p className="text-sm text-gray-600 mt-1 flex items-center gap-2">
                         <span className="text-lg">{getMemberAvatar(schedule.family_member_id)}</span>
                         {getMemberName(schedule.family_member_id)}
@@ -432,7 +557,7 @@ export function ScheduleManagement({
                         <p className="text-sm text-gray-600 mt-2">{schedule.description}</p>
                       )}
                     </div>
-                    {(isParent || schedule.family_members?.user_id === user.id) && (
+                    {(!schedule.is_external && (isParent || schedule.family_members?.user_id === user.id)) && (
                       <button
                         onClick={() => deleteSchedule(schedule.id)}
                         className="text-red-600 hover:text-red-800 text-sm"
@@ -539,7 +664,7 @@ export function ScheduleManagement({
               </thead>
               <tbody>
                 {familyMembers.map((member) => {
-                  const memberSchedules = filteredSchedules.filter(
+                  const memberSchedules = finalSchedules.filter(
                     (s) => s.family_member_id === member.id
                   )
                   const schedulesByDay = weekDays.reduce((acc: any, day) => {
@@ -573,7 +698,8 @@ export function ScheduleManagement({
                               {daySchedules.map((schedule: Schedule) => (
                                 <div
                                   key={schedule.id}
-                                  className="bg-primary-500 text-white rounded p-2 text-xs cursor-pointer hover:bg-primary-600 transition-colors"
+                                  className={`text-white rounded p-2 text-xs cursor-pointer transition-colors ${schedule.is_external ? '' : 'bg-primary-500 hover:bg-primary-600'}`}
+                                  style={schedule.is_external ? { backgroundColor: schedule.external_color } : {}}
                                   title={`${schedule.title} - ${schedule.start_time} à ${schedule.end_time}`}
                                 >
                                   <div className="font-semibold truncate">{schedule.title}</div>

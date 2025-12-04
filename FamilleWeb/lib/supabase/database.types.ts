@@ -29,6 +29,32 @@ export interface Database {
           created_by?: string
         }
       }
+      calendar_subscriptions: {
+        Row: {
+          id: string
+          family_member_id: string
+          url: string
+          name: string
+          color: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          family_member_id: string
+          url: string
+          name: string
+          color?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          family_member_id?: string
+          url?: string
+          name?: string
+          color?: string | null
+          created_at?: string
+        }
+      }
       family_members: {
         Row: {
           id: string
