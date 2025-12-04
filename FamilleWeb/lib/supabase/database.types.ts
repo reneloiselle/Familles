@@ -37,6 +37,7 @@ export interface Database {
           name: string
           color: string | null
           created_at: string
+          last_synced_at?: string | null
         }
         Insert: {
           id?: string
@@ -45,6 +46,7 @@ export interface Database {
           name: string
           color?: string | null
           created_at?: string
+          last_synced_at?: string | null
         }
         Update: {
           id?: string
@@ -53,6 +55,7 @@ export interface Database {
           name?: string
           color?: string | null
           created_at?: string
+          last_synced_at?: string | null
         }
       }
       family_members: {
@@ -100,6 +103,10 @@ export interface Database {
           end_time: string
           date: string
           created_at: string
+          created_by: string
+          subscription_id?: string | null
+          external_uid?: string | null
+          last_synced_at?: string | null
         }
         Insert: {
           id?: string
@@ -110,6 +117,10 @@ export interface Database {
           end_time: string
           date: string
           created_at?: string
+          created_by: string
+          subscription_id?: string | null
+          external_uid?: string | null
+          last_synced_at?: string | null
         }
         Update: {
           id?: string
@@ -120,6 +131,10 @@ export interface Database {
           end_time?: string
           date?: string
           created_at?: string
+          created_by?: string
+          subscription_id?: string | null
+          external_uid?: string | null
+          last_synced_at?: string | null
         }
       }
       tasks: {

@@ -21,8 +21,8 @@ interface Schedule {
     role: string
     avatar_url?: string | null
   }
-  is_external?: boolean
-  external_color?: string
+  subscription_id?: string | null
+  external_uid?: string | null
 }
 
 interface FamilyMember {
@@ -61,7 +61,6 @@ export function ScheduleManagement({
 }: ScheduleManagementProps) {
   const [showForm, setShowForm] = useState(false)
   const [showSubscriptions, setShowSubscriptions] = useState(false)
-  const [externalSchedules, setExternalSchedules] = useState<Schedule[]>([])
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [selectedDate, setSelectedDate] = useState(initialDate)
   const [view, setView] = useState(initialView)
@@ -79,66 +78,24 @@ export function ScheduleManagement({
   const supabase = createClient()
 
   useEffect(() => {
-    fetchExternalSchedules()
+    loadSubscriptions()
   }, [familyMembers])
 
-  const fetchExternalSchedules = async () => {
-    // 1. Get all subscriptions for the family members
+  const loadSubscriptions = async () => {
     const { data: subs } = await supabase
       .from('calendar_subscriptions')
       .select('*')
       .in('family_member_id', familyMembers.map(m => m.id))
 
-    if (!subs) return
-    setSubscriptions(subs)
+    if (subs) {
+      setSubscriptions(subs)
+    }
+  }
 
-    // 2. Fetch events for each subscription
-    const allExternalEvents: Schedule[] = []
-
-    await Promise.all(subs.map(async (sub) => {
-      try {
-        const response = await fetch('/api/calendar/sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: sub.url }),
-        })
-
-        if (!response.ok) return
-
-        const data = await response.json()
-        if (data.events) {
-          data.events.forEach((event: any) => {
-            // Convert to Schedule format
-            if (event.start_time) {
-              const startDate = new Date(event.start_time)
-              const endDate = event.end_time ? new Date(event.end_time) : new Date(startDate.getTime() + 3600000)
-
-              allExternalEvents.push({
-                id: `ext-${sub.id}-${event.uid || Math.random()}`,
-                family_member_id: sub.family_member_id,
-                title: event.title || 'Événement',
-                description: event.description || '',
-                start_time: startDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-                end_time: endDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-                date: startDate.toISOString().split('T')[0],
-                is_external: true,
-                external_color: sub.color || '#3B82F6',
-                family_members: {
-                  id: sub.family_member_id,
-                  user_id: null, // We don't need this for display
-                  role: 'child', // Placeholder
-                  avatar_url: getMemberAvatar(sub.family_member_id)
-                }
-              })
-            }
-          })
-        }
-      } catch (e) {
-        console.error('Error fetching calendar', sub.url, e)
-      }
-    }))
-
-    setExternalSchedules(allExternalEvents)
+  const getSubscriptionColor = (subId: string | null | undefined) => {
+    if (!subId) return null
+    const sub = subscriptions.find(s => s.id === subId)
+    return sub?.color || '#3B82F6'
   }
 
   const isParent = familyMember.role === 'parent'
@@ -228,22 +185,7 @@ export function ScheduleManagement({
       ? schedules // Show all schedules for the week
       : schedules.filter(s => s.date === selectedDate)
 
-  // Merge internal and external schedules
-  const allSchedules = [...filteredSchedules]
-
-  // Filter external schedules based on view
-  const filteredExternalSchedules = view === 'personal'
-    ? externalSchedules.filter(s => s.family_member_id === familyMember.id)
-    : externalSchedules
-
-  // Apply date filter to external schedules
-  const relevantExternalSchedules = view === 'week'
-    ? filteredExternalSchedules.filter(s => weekDays.includes(s.date))
-    : filteredExternalSchedules.filter(s => s.date === selectedDate)
-
-  const finalSchedules = [...allSchedules, ...relevantExternalSchedules]
-
-  const groupedSchedules = finalSchedules.reduce((acc: any, schedule) => {
+  const groupedSchedules = filteredSchedules.reduce((acc: any, schedule) => {
     const key = schedule.date
     if (!acc[key]) acc[key] = []
     acc[key].push(schedule)
@@ -333,7 +275,10 @@ export function ScheduleManagement({
                 </h4>
                 <CalendarSubscriptionManager
                   familyMemberId={member.id}
-                  onSubscriptionsChange={fetchExternalSchedules}
+                  onSubscriptionsChange={() => {
+                    loadSubscriptions()
+                    router.refresh()
+                  }}
                 />
               </div>
             ))}
@@ -525,49 +470,54 @@ export function ScheduleManagement({
             })}
           </h2>
 
-          {finalSchedules.length === 0 ? (
+          {filteredSchedules.length === 0 ? (
             <p className="text-gray-500">Aucun horaire pour cette date</p>
           ) : (
             <div className="space-y-4">
-              {finalSchedules.map((schedule) => (
-                <div
-                  key={schedule.id}
-                  className={`border-l-4 pl-4 py-3 bg-gray-50 rounded ${schedule.is_external ? '' : 'border-primary-500'}`}
-                  style={schedule.is_external ? { borderLeftColor: schedule.external_color } : {}}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <h3 className="font-semibold flex items-center gap-2">
-                        {schedule.title}
-                        {schedule.is_external && (
-                          <span className="text-xs bg-gray-200 text-gray-600 px-1 rounded">iCal</span>
+              {filteredSchedules.map((schedule) => {
+                const isExternal = !!schedule.subscription_id
+                const color = isExternal ? getSubscriptionColor(schedule.subscription_id) : undefined
+
+                return (
+                  <div
+                    key={schedule.id}
+                    className={`border-l-4 pl-4 py-3 bg-gray-50 rounded ${isExternal ? '' : 'border-primary-500'}`}
+                    style={isExternal ? { borderLeftColor: color || '#3B82F6' } : {}}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <h3 className="font-semibold flex items-center gap-2">
+                          {schedule.title}
+                          {isExternal && (
+                            <span className="text-xs bg-gray-200 text-gray-600 px-1 rounded">iCal</span>
+                          )}
+                        </h3>
+                        <p className="text-sm text-gray-600 mt-1 flex items-center gap-2">
+                          <span className="text-lg">{getMemberAvatar(schedule.family_member_id)}</span>
+                          {getMemberName(schedule.family_member_id)}
+                        </p>
+                        <div className="flex items-center gap-4 mt-2 text-sm text-gray-600">
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-4 h-4" />
+                            {schedule.start_time} - {schedule.end_time}
+                          </span>
+                        </div>
+                        {schedule.description && (
+                          <p className="text-sm text-gray-600 mt-2">{schedule.description}</p>
                         )}
-                      </h3>
-                      <p className="text-sm text-gray-600 mt-1 flex items-center gap-2">
-                        <span className="text-lg">{getMemberAvatar(schedule.family_member_id)}</span>
-                        {getMemberName(schedule.family_member_id)}
-                      </p>
-                      <div className="flex items-center gap-4 mt-2 text-sm text-gray-600">
-                        <span className="flex items-center gap-1">
-                          <Clock className="w-4 h-4" />
-                          {schedule.start_time} - {schedule.end_time}
-                        </span>
                       </div>
-                      {schedule.description && (
-                        <p className="text-sm text-gray-600 mt-2">{schedule.description}</p>
+                      {(!isExternal && (isParent || schedule.family_members?.user_id === user.id)) && (
+                        <button
+                          onClick={() => deleteSchedule(schedule.id)}
+                          className="text-red-600 hover:text-red-800 text-sm"
+                        >
+                          Supprimer
+                        </button>
                       )}
                     </div>
-                    {(!schedule.is_external && (isParent || schedule.family_members?.user_id === user.id)) && (
-                      <button
-                        onClick={() => deleteSchedule(schedule.id)}
-                        className="text-red-600 hover:text-red-800 text-sm"
-                      >
-                        Supprimer
-                      </button>
-                    )}
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>
@@ -664,7 +614,7 @@ export function ScheduleManagement({
               </thead>
               <tbody>
                 {familyMembers.map((member) => {
-                  const memberSchedules = finalSchedules.filter(
+                  const memberSchedules = filteredSchedules.filter(
                     (s) => s.family_member_id === member.id
                   )
                   const schedulesByDay = weekDays.reduce((acc: any, day) => {
@@ -695,19 +645,22 @@ export function ScheduleManagement({
                             className="border border-gray-300 p-2 align-top min-h-[100px]"
                           >
                             <div className="space-y-1">
-                              {daySchedules.map((schedule: Schedule) => (
-                                <div
-                                  key={schedule.id}
-                                  className={`text-white rounded p-2 text-xs cursor-pointer transition-colors ${schedule.is_external ? '' : 'bg-primary-500 hover:bg-primary-600'}`}
-                                  style={schedule.is_external ? { backgroundColor: schedule.external_color } : {}}
-                                  title={`${schedule.title} - ${schedule.start_time} à ${schedule.end_time}`}
-                                >
-                                  <div className="font-semibold truncate">{schedule.title}</div>
-                                  <div className="text-primary-100 text-[10px]">
-                                    {schedule.start_time} - {schedule.end_time}
+                              {daySchedules.map((schedule: Schedule) => {
+                                const isExternal = !!schedule.subscription_id
+                                const color = isExternal ? getSubscriptionColor(schedule.subscription_id) : undefined
+
+                                return (
+                                  <div
+                                    key={schedule.id}
+                                    className={`text-white rounded p-2 text-xs cursor-pointer transition-colors ${isExternal ? '' : 'bg-primary-500 hover:bg-primary-600'}`}
+                                    style={isExternal ? { backgroundColor: color || '#3B82F6' } : {}}
+                                    title={`${schedule.title} - ${schedule.start_time} à ${schedule.end_time}`}
+                                  >
+                                    <div className="font-semibold truncate">{schedule.title}</div>
+                                    <div className="truncate">{schedule.start_time} - {schedule.end_time}</div>
                                   </div>
-                                </div>
-                              ))}
+                                )
+                              })}
                             </div>
                           </td>
                         )

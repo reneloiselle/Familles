@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2, Calendar, ExternalLink } from 'lucide-react'
+import { Plus, Trash2, Calendar, ExternalLink, RefreshCw } from 'lucide-react'
 
 interface Subscription {
     id: string
@@ -12,6 +12,7 @@ interface Subscription {
     name: string
     color: string | null
     created_at: string
+    last_synced_at: string | null
 }
 
 interface CalendarSubscriptionManagerProps {
@@ -28,6 +29,7 @@ export function CalendarSubscriptionManager({ familyMemberId, onSubscriptionsCha
         color: '#3B82F6',
     })
     const [loading, setLoading] = useState(false)
+    const [syncingId, setSyncingId] = useState<string | null>(null)
     const [error, setError] = useState('')
     const router = useRouter()
     const supabase = createClient()
@@ -104,6 +106,30 @@ export function CalendarSubscriptionManager({ familyMemberId, onSubscriptionsCha
             router.refresh()
         } catch (err: any) {
             setError(err.message || 'Erreur lors de la suppression')
+        }
+    }
+
+    const syncSubscription = async (id: string) => {
+        setSyncingId(id)
+        try {
+            const response = await fetch('/api/calendar/sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ subscription_id: id }),
+            })
+
+            const data = await response.json()
+            if (!response.ok) {
+                throw new Error(data.error || 'Erreur lors de la synchronisation')
+            }
+
+            await loadSubscriptions()
+            if (onSubscriptionsChange) onSubscriptionsChange()
+            router.refresh()
+        } catch (err: any) {
+            setError(err.message || 'Erreur de synchronisation')
+        } finally {
+            setSyncingId(null)
         }
     }
 
@@ -202,25 +228,42 @@ export function CalendarSubscriptionManager({ familyMemberId, onSubscriptionsCha
                         className="flex items-center justify-between p-3 border rounded bg-white"
                         style={{ borderLeftColor: sub.color || '#3B82F6', borderLeftWidth: '4px' }}
                     >
-                        <div className="overflow-hidden">
+                        <div className="overflow-hidden flex-1">
                             <p className="font-medium text-sm truncate">{sub.name}</p>
-                            <a
-                                href={sub.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs text-gray-500 flex items-center gap-1 hover:text-primary-600 truncate"
-                            >
-                                <ExternalLink className="w-3 h-3" />
-                                Voir le lien
-                            </a>
+                            <div className="flex items-center gap-2 text-xs text-gray-500">
+                                <a
+                                    href={sub.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-1 hover:text-primary-600 truncate"
+                                >
+                                    <ExternalLink className="w-3 h-3" />
+                                    Lien
+                                </a>
+                                {sub.last_synced_at && (
+                                    <span title={`Dernière synchro: ${new Date(sub.last_synced_at).toLocaleString()}`}>
+                                        • {new Date(sub.last_synced_at).toLocaleDateString()} {new Date(sub.last_synced_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                )}
+                            </div>
                         </div>
-                        <button
-                            onClick={() => deleteSubscription(sub.id)}
-                            className="text-gray-400 hover:text-red-600 p-1"
-                            title="Supprimer"
-                        >
-                            <Trash2 className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center gap-1">
+                            <button
+                                onClick={() => syncSubscription(sub.id)}
+                                disabled={syncingId === sub.id}
+                                className={`text-gray-400 hover:text-blue-600 p-1 ${syncingId === sub.id ? 'animate-spin text-blue-600' : ''}`}
+                                title="Synchroniser maintenant"
+                            >
+                                <RefreshCw className="w-4 h-4" />
+                            </button>
+                            <button
+                                onClick={() => deleteSubscription(sub.id)}
+                                className="text-gray-400 hover:text-red-600 p-1"
+                                title="Supprimer"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                            </button>
+                        </div>
                     </div>
                 ))}
             </div>
