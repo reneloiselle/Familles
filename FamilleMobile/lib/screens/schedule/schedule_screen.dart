@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:syncfusion_flutter_calendar/calendar.dart';
 import '../../providers/schedule_provider.dart';
 import '../../providers/family_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../models/schedule.dart';
 import '../../models/family.dart';
+import '../../widgets/family_calendar_view.dart';
 
 class ScheduleScreen extends StatelessWidget {
   const ScheduleScreen({super.key});
@@ -103,12 +105,115 @@ class _ScheduleScreenContentState extends State<_ScheduleScreenContent> {
       ),
       body: Consumer<ScheduleProvider>(
         builder: (context, provider, _) {
+          // Pour les vues avec calendrier (family et week), on utilise une structure avec Expanded
+          // Pour la vue personal, on utilise un SingleChildScrollView
+          final isCalendarView = provider.view == 'family' || provider.view == 'week';
+          
           return RefreshIndicator(
             onRefresh: () async => _loadSchedules(),
-            child: SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(16),
-              child: Column(
+            child: isCalendarView
+                ? Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (provider.error != null)
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            margin: const EdgeInsets.only(bottom: 16),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade50,
+                              border: Border.all(color: Colors.red.shade300),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              provider.error!,
+                              style: TextStyle(color: Colors.red.shade700),
+                            ),
+                          ),
+                        if (widget.isParent) ...[
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: [
+                                _ViewChip(
+                                  label: 'Mon agenda',
+                                  isSelected: provider.view == 'personal',
+                                  onTap: () {
+                                    provider.setView('personal');
+                                    _loadSchedules();
+                                  },
+                                ),
+                                const SizedBox(width: 8),
+                                _ViewChip(
+                                  label: 'Vue famille',
+                                  isSelected: provider.view == 'family',
+                                  onTap: () {
+                                    provider.setView('family');
+                                    _loadSchedules();
+                                  },
+                                ),
+                                const SizedBox(width: 8),
+                                _ViewChip(
+                                  label: 'Vue semaine',
+                                  isSelected: provider.view == 'week',
+                                  onTap: () {
+                                    provider.setView('week');
+                                    _loadSchedules();
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                        if (_showForm) ...[
+                          _CreateScheduleForm(
+                            familyId: widget.familyId,
+                            familyMember: widget.familyMember,
+                            familyMembers: widget.familyMembers,
+                            isParent: widget.isParent,
+                            onCancel: () => setState(() => _showForm = false),
+                            onSuccess: () {
+                              setState(() => _showForm = false);
+                              _loadSchedules();
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                        if (provider.isLoading && provider.schedules.isEmpty)
+                          const Expanded(
+                            child: Center(
+                              child: CircularProgressIndicator(),
+                            ),
+                          )
+                        else
+                          Expanded(
+                            child: FamilyCalendarView(
+                              schedules: provider.schedules,
+                              familyMembers: widget.familyMembers,
+                              selectedDate: provider.selectedDate,
+                              currentUserId: context.read<AuthProvider>().user?.id,
+                              calendarView: provider.view == 'family' 
+                                  ? CalendarView.workWeek 
+                                  : CalendarView.week,
+                              onAppointmentTap: (schedule) {
+                                _showScheduleDetails(context, schedule, widget.familyMembers);
+                              },
+                              onAppointmentLongPress: widget.isParent
+                                  ? (schedule) {
+                                      _deleteSchedule(context, provider, schedule.id);
+                                    }
+                                  : null,
+                            ),
+                          ),
+                      ],
+                    ),
+                  )
+                : SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   if (provider.error != null)
@@ -262,7 +367,7 @@ class _ScheduleScreenContentState extends State<_ScheduleScreenContent> {
                     const SizedBox(height: 16),
                   ],
 
-                  // Contenu selon la vue
+                  // Contenu selon la vue (uniquement pour la vue personal dans le SingleChildScrollView)
                   if (provider.isLoading && provider.schedules.isEmpty)
                     const Center(
                       child: Padding(
@@ -270,28 +375,10 @@ class _ScheduleScreenContentState extends State<_ScheduleScreenContent> {
                         child: CircularProgressIndicator(),
                       ),
                     )
-                  else if (provider.view == 'personal')
+                  else
                     _PersonalView(
                       schedules: provider.schedules,
                       currentUserId: context.read<AuthProvider>().user?.id,
-                      onDelete: (id) => _deleteSchedule(context, provider, id),
-                    )
-                  else if (provider.view == 'family')
-                    _FamilyView(
-                      schedules: provider.schedules,
-                      selectedDate: provider.selectedDate,
-                      familyMembers: widget.familyMembers,
-                      currentUserId: context.read<AuthProvider>().user?.id,
-                      isParent: widget.isParent,
-                      onDelete: (id) => _deleteSchedule(context, provider, id),
-                    )
-                  else if (provider.view == 'week')
-                    _WeekView(
-                      schedules: provider.schedules,
-                      selectedDate: provider.selectedDate,
-                      familyMembers: widget.familyMembers,
-                      currentUserId: context.read<AuthProvider>().user?.id,
-                      isParent: widget.isParent,
                       onDelete: (id) => _deleteSchedule(context, provider, id),
                     ),
                 ],
@@ -345,6 +432,48 @@ class _ScheduleScreenContentState extends State<_ScheduleScreenContent> {
         }
       }
     }
+  }
+
+  void _showScheduleDetails(BuildContext context, Schedule schedule, List<FamilyMember> familyMembers) {
+    final member = familyMembers.firstWhere(
+      (m) => m.id == schedule.familyMemberId,
+      orElse: () => familyMembers.first,
+    );
+
+    String memberName = 'Inconnu';
+    if (member.name != null) {
+      memberName = member.name!;
+    } else if (member.email != null) {
+      memberName = member.email!;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(schedule.title),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (schedule.description != null) ...[
+              Text(schedule.description!),
+              const SizedBox(height: 8),
+            ],
+            Text('Membre: $memberName'),
+            const SizedBox(height: 4),
+            Text('Date: ${DateFormat('dd/MM/yyyy').format(schedule.dateTime)}'),
+            const SizedBox(height: 4),
+            Text('Heure: ${schedule.startTime} - ${schedule.endTime}'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -667,229 +796,6 @@ class _PersonalView extends StatelessWidget {
   }
 }
 
-class _FamilyView extends StatelessWidget {
-  final List<Schedule> schedules;
-  final DateTime selectedDate;
-  final List<FamilyMember> familyMembers;
-  final String? currentUserId;
-  final bool isParent;
-  final Function(String) onDelete;
-
-  const _FamilyView({
-    required this.schedules,
-    required this.selectedDate,
-    required this.familyMembers,
-    required this.currentUserId,
-    required this.isParent,
-    required this.onDelete,
-  });
-
-  String _getMemberName(String memberId) {
-    final memberList = familyMembers.where((m) => m.id == memberId).toList();
-    final member = memberList.isNotEmpty ? memberList.first : null;
-    if (member == null) return 'Membre inconnu';
-    if (member.userId == currentUserId) return 'Vous';
-    if (member.name != null) return member.name!;
-    if (member.email != null) return member.email!;
-    return 'Membre ${member.id.substring(0, 8)}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final dateStr = selectedDate.toIso8601String().split('T')[0];
-    final daySchedules = schedules.where((s) => s.date == dateStr).toList();
-
-    if (daySchedules.isEmpty) {
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            children: [
-              Icon(Icons.event_busy, size: 64, color: Colors.grey[400]),
-              const SizedBox(height: 16),
-              Text(
-                'Aucun horaire pour cette date',
-                style: TextStyle(color: Colors.grey[600]),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Column(
-      children: daySchedules.map((schedule) => _ScheduleCard(
-            schedule: schedule,
-            memberName: _getMemberName(schedule.familyMemberId),
-            canDelete: isParent || schedule.familyMemberId == currentUserId,
-            onDelete: () => onDelete(schedule.id),
-          )).toList(),
-    );
-  }
-}
-
-class _WeekView extends StatelessWidget {
-  final List<Schedule> schedules;
-  final DateTime selectedDate;
-  final List<FamilyMember> familyMembers;
-  final String? currentUserId;
-  final bool isParent;
-  final Function(String) onDelete;
-
-  const _WeekView({
-    required this.schedules,
-    required this.selectedDate,
-    required this.familyMembers,
-    required this.currentUserId,
-    required this.isParent,
-    required this.onDelete,
-  });
-
-  List<String> _getWeekDays() {
-    final monday = selectedDate.subtract(Duration(days: selectedDate.weekday - 1));
-    return List.generate(7, (i) {
-      final day = monday.add(Duration(days: i));
-      return day.toIso8601String().split('T')[0];
-    });
-  }
-
-  String _getMemberName(String memberId) {
-    final memberList = familyMembers.where((m) => m.id == memberId).toList();
-    final member = memberList.isNotEmpty ? memberList.first : null;
-    if (member == null) return 'Inconnu';
-    if (member.userId == currentUserId) return 'Vous';
-    if (member.name != null) return member.name!;
-    if (member.email != null) return member.email!;
-    return 'Membre ${member.id.substring(0, 4)}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final weekDays = _getWeekDays();
-    
-    // Organiser les horaires par membre et par jour
-    final schedulesByMemberAndDay = <String, Map<String, List<Schedule>>>{};
-    for (final member in familyMembers) {
-      schedulesByMemberAndDay[member.id] = {};
-      for (final day in weekDays) {
-        schedulesByMemberAndDay[member.id]![day] = [];
-      }
-    }
-
-    for (final schedule in schedules) {
-      if (schedulesByMemberAndDay.containsKey(schedule.familyMemberId)) {
-        schedulesByMemberAndDay[schedule.familyMemberId]!
-            .putIfAbsent(schedule.date, () => [])
-            .add(schedule);
-      }
-    }
-
-    return Card(
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: SingleChildScrollView(
-          child: Table(
-            border: TableBorder.all(color: Colors.grey.shade300),
-            columnWidths: const {
-              0: FixedColumnWidth(120),
-              1: FixedColumnWidth(150),
-              2: FixedColumnWidth(150),
-              3: FixedColumnWidth(150),
-              4: FixedColumnWidth(150),
-              5: FixedColumnWidth(150),
-              6: FixedColumnWidth(150),
-              7: FixedColumnWidth(150),
-            },
-            children: [
-              // En-tête
-              TableRow(
-                children: [
-                  const TableCell(child: SizedBox.shrink()),
-                  ...weekDays.map((day) {
-                    final date = DateTime.parse(day);
-                    return TableCell(
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        color: Colors.grey.shade100,
-                        child: Column(
-                          children: [
-                            Text(
-                              DateFormat('EEE', 'fr').format(date),
-                              style: const TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            Text(
-                              DateFormat('dd/MM').format(date),
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }),
-                ],
-              ),
-              // Lignes pour chaque membre
-              ...familyMembers.map((member) {
-                return TableRow(
-                  children: [
-                    TableCell(
-                      verticalAlignment: TableCellVerticalAlignment.top,
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        color: Colors.grey.shade50,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _getMemberName(member.id),
-                              style: const TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            if (member.role == 'parent')
-                              Text(
-                                '(Parent)',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: Colors.grey[600],
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    ...weekDays.map((day) {
-                      final daySchedules =
-                          schedulesByMemberAndDay[member.id]?[day] ?? [];
-                      return TableCell(
-                        verticalAlignment: TableCellVerticalAlignment.top,
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          constraints: const BoxConstraints(minHeight: 100),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: daySchedules.map((schedule) {
-                              final canDelete = isParent ||
-                                  schedule.familyMemberId == currentUserId;
-                              return _ScheduleChip(
-                                schedule: schedule,
-                                canDelete: canDelete,
-                                onDelete: () => onDelete(schedule.id),
-                              );
-                            }).toList(),
-                          ),
-                        ),
-                      );
-                    }),
-                  ],
-                );
-              }),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _DayScheduleCard extends StatelessWidget {
   final String date;
   final List<Schedule> schedules;
@@ -1006,51 +912,3 @@ class _ScheduleCard extends StatelessWidget {
   }
 }
 
-class _ScheduleChip extends StatelessWidget {
-  final Schedule schedule;
-  final bool canDelete;
-  final VoidCallback onDelete;
-
-  const _ScheduleChip({
-    required this.schedule,
-    required this.canDelete,
-    required this.onDelete,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onLongPress: canDelete ? onDelete : null,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 4),
-        padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.primary,
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              schedule.title,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            Text(
-              '${schedule.startTime} - ${schedule.endTime}',
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.9),
-                fontSize: 9,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
