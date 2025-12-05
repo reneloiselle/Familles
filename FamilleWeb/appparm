@@ -31,3 +31,39 @@ S3_PUBLIC_URL=https://cricricrucru.tor1.digitaloceanspaces.com  # URL publique d
 # Option 2: GitHub Container Registry
 # GITHUB_USERNAME=votre_username_github
 # IMAGE_TAG=latest
+####
+# ============================================
+# Fichier de configuration pour Docker Compose
+# ============================================
+# 
+# INSTRUCTIONS:
+# 1. Copiez ce fichier en .env : cp .env.example .env
+# 2. Remplissez toutes les valeurs ci-dessous avec vos vraies données
+# 3. Configurez l'image Docker (Docker Hub ou GitHub Container Registry)
+# 4. Lancez : docker compose up -d
+#    OU utilisez le script : ./start.sh
+#
+# ============================================
+NEXT_PUBLIC_SUPABASE_URL=https://zoremxppfoiatdaxgukx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpvcmVteHBwZm9pYXRkYXhndWt4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQzNTY5NTcsImV4cCI6MjA3OTkzMjk1N30.yBbJSYOzejO4r-lC6Mntd2t4BEE2_CHTnRQL_EmVsH8
+MYToken=sbp_f9c325044747729e173291295090e5a963e8cbb4
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpvcmVteHBwZm9pYXRkYXhndWt4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NDM1Njk1NywiZXhwIjoyMDc5OTMyOTU3fQ.ivHBIX0Ar_fBRolLjEUTS6zoqnaH65H99donmTewKnU
+DOCKER_USERNAME=reneloiselle
+# 
+# Provider S3 (exemple avec AWS S3)
+S3_ENDPOINT=https://cricricrucru.tor1.digitaloceanspaces.com  # ou votre endpoint custom
+S3_REGION=tor1
+S3_ACCESS_KEY_ID=DO00DUM4W7LETGZYWWF6
+S3_SECRET_ACCESS_KEY=1JYY0GR0B/lzCAs+K+25Yd/gE80gt2GIlGAE329i9xE
+S3_BUCKET_NAME=audiobooks
+S3_PUBLIC_URL=https://cricricrucru.tor1.digitaloceanspaces.com  # URL publique du bucket
+# --------------------------------------------
+# DOCKER IMAGE - Configuration de l'image Docker
+# --------------------------------------------
+# Option 1: Docker Hub
+# DOCKER_USERNAME=votre_username_dockerhub
+# IMAGE_TAG=latest
+
+# Option 2: GitHub Container Registry
+# GITHUB_USERNAME=votre_username_github
+# IMAGE_TAG=latest

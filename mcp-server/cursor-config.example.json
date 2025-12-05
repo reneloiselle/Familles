@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "familles": {
+      "command": "node",
+      "args": ["/chemin/absolu/vers/mcp-server/dist/index.js"],
+      "env": {
+        "SUPABASE_URL": "https://votre-projet.supabase.co",
+        "SUPABASE_SERVICE_ROLE_KEY": "votre-clé-service-role"
+      }
+    }
+  }
+}
+
