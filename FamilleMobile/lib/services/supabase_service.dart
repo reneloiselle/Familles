@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/supabase_config.dart';
 import '../models/family.dart';
@@ -225,48 +226,100 @@ class SupabaseService {
     String? familyId,
     DateTime? weekStart,
   }) async {
+    debugPrint('=== getSchedules DEBUG ===');
+    debugPrint('familyMemberId: $familyMemberId');
+    debugPrint('familyId: $familyId');
+    debugPrint('weekStart: $weekStart');
+
     var query = client.from('schedules').select('*');
 
     if (familyMemberId != null) {
       query = query.eq('family_member_id', familyMemberId);
+      debugPrint('Filtering by familyMemberId: $familyMemberId');
     } else if (familyId != null) {
       // Pour récupérer tous les horaires de la famille
+      debugPrint('Loading schedules for all family members (familyId: $familyId)');
       final members = await getFamilyMembers(familyId);
+      debugPrint('Found ${members.length} family members');
       if (members.isEmpty) {
         return [];
       }
-      // Récupérer les horaires pour chaque membre et les combiner
-      final allSchedules = <Schedule>[];
-      for (final member in members) {
-        final memberSchedules = await getSchedules(
-          familyMemberId: member.id,
-          weekStart: weekStart,
-        );
-        allSchedules.addAll(memberSchedules);
+      
+      // Utiliser une seule requête avec .inFilter() pour récupérer tous les schedules en une fois
+      final memberIds = members.map((m) => m.id).toList();
+      debugPrint('Loading schedules for member IDs: $memberIds');
+      
+      query = query.inFilter('family_member_id', memberIds);
+      
+      // Appliquer le filtre de semaine si nécessaire
+      if (weekStart != null) {
+        final weekEnd = weekStart.add(const Duration(days: 6));
+        final weekStartStr = weekStart.toIso8601String().split('T')[0];
+        final weekEndStr = weekEnd.toIso8601String().split('T')[0];
+        debugPrint('Filtering by week: $weekStartStr to $weekEndStr');
+        query = query
+            .gte('date', weekStartStr)
+            .lte('date', weekEndStr);
       }
+      
+      final response = await query.order('date').order('start_time');
+      
+      if (response.isEmpty) {
+        debugPrint('No schedules found for family members');
+        return [];
+      }
+      
+      final allSchedules = (response as List)
+          .map((json) => Schedule.fromJson(json as Map<String, dynamic>))
+          .toList();
+      
+      debugPrint('Total schedules for all members: ${allSchedules.length}');
+      
+      // Debug: compter les schedules par membre
+      final schedulesByMember = <String, int>{};
+      for (final schedule in allSchedules) {
+        schedulesByMember[schedule.familyMemberId] = 
+            (schedulesByMember[schedule.familyMemberId] ?? 0) + 1;
+      }
+      debugPrint('Schedules by member: $schedulesByMember');
+      
       // Trier par date et heure
       allSchedules.sort((a, b) {
         final dateCompare = a.date.compareTo(b.date);
         if (dateCompare != 0) return dateCompare;
         return a.startTime.compareTo(b.startTime);
       });
+      
       return allSchedules;
     }
 
     if (weekStart != null) {
       final weekEnd = weekStart.add(const Duration(days: 6));
+      final weekStartStr = weekStart.toIso8601String().split('T')[0];
+      final weekEndStr = weekEnd.toIso8601String().split('T')[0];
+      debugPrint('Filtering by week: $weekStartStr to $weekEndStr');
       query = query
-          .gte('date', weekStart.toIso8601String().split('T')[0])
-          .lte('date', weekEnd.toIso8601String().split('T')[0]);
+          .gte('date', weekStartStr)
+          .lte('date', weekEndStr);
     }
 
     final response = await query.order('date').order('start_time');
 
-    if (response.isEmpty) return [];
+    if (response.isEmpty) {
+      debugPrint('No schedules found in query');
+      return [];
+    }
 
-    return (response as List)
+    final schedules = (response as List)
         .map((json) => Schedule.fromJson(json as Map<String, dynamic>))
         .toList();
+    
+    debugPrint('Returning ${schedules.length} schedules');
+    for (final schedule in schedules.take(3)) {
+      debugPrint('  - ${schedule.title} (${schedule.date}) - member: ${schedule.familyMemberId}');
+    }
+    
+    return schedules;
   }
 
   Future<Schedule> createSchedule({

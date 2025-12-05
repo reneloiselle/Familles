@@ -57,15 +57,37 @@ class ScheduleProvider with ChangeNotifier {
         }
       } else {
         // Charger pour toute la famille
+        debugPrint('=== ScheduleProvider.loadSchedules ===');
+        debugPrint('Loading schedules for family: $familyId');
+        debugPrint('Date filter: $date');
+        debugPrint('WeekStart: $weekStart');
+        
         _schedules = await _service.getSchedules(
           familyId: familyId,
           weekStart: weekStart,
         );
-        // Filtrer par date si nécessaire
-        if (date != null) {
+        
+        debugPrint('Loaded ${_schedules.length} schedules');
+        
+        // Filtrer par date seulement pour la vue personnelle avec une date spécifique
+        // Pour les vues family et week, on ne filtre pas par date car on veut voir toute la semaine
+        if (date != null && weekStart == null) {
+          // Seulement filtrer par date si on n'a pas de weekStart (vue personnelle avec date spécifique)
           final dateStr = date.toIso8601String().split('T')[0];
+          debugPrint('Filtering by date: $dateStr');
+          final beforeFilter = _schedules.length;
           _schedules = _schedules.where((s) => s.date == dateStr).toList();
+          debugPrint('After date filter: ${_schedules.length} schedules (was $beforeFilter)');
         }
+        
+        // Debug: afficher les schedules par membre
+        final schedulesByMember = <String, int>{};
+        for (final schedule in _schedules) {
+          schedulesByMember[schedule.familyMemberId] = 
+              (schedulesByMember[schedule.familyMemberId] ?? 0) + 1;
+        }
+        debugPrint('Schedules by member: $schedulesByMember');
+        debugPrint('Final schedules count: ${_schedules.length}');
       }
 
       // Initialiser les subscriptions Realtime

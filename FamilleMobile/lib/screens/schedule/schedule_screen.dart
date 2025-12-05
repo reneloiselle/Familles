@@ -80,7 +80,10 @@ class _ScheduleScreenContentState extends State<_ScheduleScreenContent> {
       final monday = selectedDate.subtract(Duration(days: selectedDate.weekday - 1));
       weekStart = DateTime(monday.year, monday.month, monday.day);
     } else if (view == 'family') {
-      date = selectedDate;
+      // Pour la vue famille (workWeek), charger toute la semaine (lundi à vendredi)
+      final monday = selectedDate.subtract(Duration(days: selectedDate.weekday - 1));
+      weekStart = DateTime(monday.year, monday.month, monday.day);
+      // Ne pas utiliser date pour la vue family car on veut voir toute la semaine
     }
 
     provider.loadSchedules(
@@ -195,7 +198,7 @@ class _ScheduleScreenContentState extends State<_ScheduleScreenContent> {
                               selectedDate: provider.selectedDate,
                               currentUserId: context.read<AuthProvider>().user?.id,
                               calendarView: provider.view == 'family' 
-                                  ? CalendarView.workWeek 
+                                  ? CalendarView.workWeek
                                   : CalendarView.week,
                               onAppointmentTap: (schedule) {
                                 _showScheduleDetails(context, schedule, widget.familyMembers);
@@ -205,6 +208,12 @@ class _ScheduleScreenContentState extends State<_ScheduleScreenContent> {
                                       _deleteSchedule(context, provider, schedule.id);
                                     }
                                   : null,
+                              onViewChanged: (newDate) {
+                                // Quand l'utilisateur change de plage dans le calendrier, mettre à jour la date sélectionnée et recharger
+                                debugPrint('Calendar view changed to date: $newDate');
+                                provider.setSelectedDate(newDate);
+                                _loadSchedules();
+                              },
                             ),
                           ),
                       ],
