@@ -6,6 +6,7 @@ import '../family/family_screen.dart';
 import '../schedule/schedule_screen.dart';
 import '../tasks/tasks_screen.dart';
 import '../lists/lists_screen.dart';
+import '../chat/chat_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -87,6 +88,17 @@ class DashboardHomeScreen extends StatelessWidget {
         title: const Text('FamilleMobile'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.chat_bubble_outline),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const ChatScreen(),
+                ),
+              );
+            },
+            tooltip: 'Chat OpenAI',
+          ),
+          IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
               final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -95,28 +107,91 @@ class DashboardHomeScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: const Center(
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
+            const SizedBox(height: 40),
+            const Icon(
               Icons.family_restroom,
               size: 100,
               color: Color(0xFF3b82f6),
             ),
-            SizedBox(height: 24),
-            Text(
+            const SizedBox(height: 24),
+            const Text(
               'Bienvenue !',
               style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
               ),
             ),
-            SizedBox(height: 8),
-            Text(
+            const SizedBox(height: 8),
+            const Text(
               'Utilisez la navigation en bas pour accéder aux différentes sections',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.grey),
+            ),
+            const SizedBox(height: 48),
+            Card(
+              elevation: 2,
+              child: InkWell(
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const ChatScreen(),
+                    ),
+                  );
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF3b82f6).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.chat_bubble,
+                          color: Color(0xFF3b82f6),
+                          size: 32,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Chat OpenAI',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'Discutez avec l\'assistant IA',
+                              style: TextStyle(
+                                color: Colors.grey,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(
+                        Icons.arrow_forward_ios,
+                        color: Colors.grey,
+                        size: 20,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
           ],
         ),

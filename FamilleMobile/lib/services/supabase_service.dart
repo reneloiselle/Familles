@@ -461,6 +461,187 @@ class SupabaseService {
     await client.from('shared_list_items').delete().eq('id', itemId);
   }
 
+  // Chat conversations methods
+  /// Récupère ou crée une conversation pour l'utilisateur actuel
+  Future<String> getOrCreateConversation() async {
+    final user = currentUser;
+    if (user == null) {
+      throw Exception('Vous devez être connecté');
+    }
+
+    // Chercher la conversation la plus récente
+    final response = await client
+        .from('chat_conversations')
+        .select('id')
+        .eq('user_id', user.id)
+        .order('updated_at', ascending: false)
+        .limit(1)
+        .maybeSingle();
+
+    if (response != null) {
+      return response['id'] as String;
+    }
+
+    // Créer une nouvelle conversation
+    final newConversation = await client
+        .from('chat_conversations')
+        .insert({
+          'user_id': user.id,
+          'title': 'Conversation',
+        })
+        .select()
+        .single();
+
+    return newConversation['id'] as String;
+  }
+
+  /// Sauvegarde un message dans une conversation
+  Future<void> saveMessage({
+    required String conversationId,
+    required String role,
+    required String content,
+    int? order,
+  }) async {
+    final user = currentUser;
+    if (user == null) {
+      throw Exception('Vous devez être connecté');
+    }
+
+    // Vérifier que la conversation appartient à l'utilisateur
+    final conversation = await client
+        .from('chat_conversations')
+        .select('id')
+        .eq('id', conversationId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+    if (conversation == null) {
+      throw Exception('Conversation non trouvée');
+    }
+
+    // Récupérer le dernier ordre si non spécifié
+    int messageOrder = order ?? 0;
+    if (order == null) {
+      final lastMessage = await client
+          .from('chat_messages')
+          .select('message_order')
+          .eq('conversation_id', conversationId)
+          .order('message_order', ascending: false)
+          .limit(1)
+          .maybeSingle();
+
+      if (lastMessage != null) {
+        messageOrder = (lastMessage['message_order'] as int) + 1;
+      }
+    }
+
+    await client.from('chat_messages').insert({
+      'conversation_id': conversationId,
+      'role': role,
+      'content': content,
+      'message_order': messageOrder,
+    });
+  }
+
+  /// Charge une conversation avec tous ses messages
+  Future<Map<String, dynamic>> loadConversation(String conversationId) async {
+    final user = currentUser;
+    if (user == null) {
+      throw Exception('Vous devez être connecté');
+    }
+
+    // Vérifier que la conversation appartient à l'utilisateur
+    final conversation = await client
+        .from('chat_conversations')
+        .select('*')
+        .eq('id', conversationId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+    if (conversation == null) {
+      throw Exception('Conversation non trouvée');
+    }
+
+    // Charger les messages
+    final messages = await client
+        .from('chat_messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .order('message_order', ascending: true);
+
+    return {
+      'conversation': conversation,
+      'messages': messages,
+    };
+  }
+
+  /// Charge la conversation la plus récente de l'utilisateur
+  Future<Map<String, dynamic>?> loadLatestConversation() async {
+    final user = currentUser;
+    if (user == null) {
+      return null;
+    }
+
+    final conversation = await client
+        .from('chat_conversations')
+        .select('id')
+        .eq('user_id', user.id)
+        .order('updated_at', ascending: false)
+        .limit(1)
+        .maybeSingle();
+
+    if (conversation == null) {
+      return null;
+    }
+
+    return await loadConversation(conversation['id'] as String);
+  }
+
+  /// Liste toutes les conversations de l'utilisateur
+  Future<List<Map<String, dynamic>>> getConversations() async {
+    final user = currentUser;
+    if (user == null) {
+      return [];
+    }
+
+    final conversations = await client
+        .from('chat_conversations')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('updated_at', ascending: false);
+
+    if (conversations.isEmpty) {
+      return [];
+    }
+
+    return (conversations as List)
+        .map((c) => c as Map<String, dynamic>)
+        .toList();
+  }
+
+  /// Supprime une conversation et tous ses messages
+  Future<void> deleteConversation(String conversationId) async {
+    final user = currentUser;
+    if (user == null) {
+      throw Exception('Vous devez être connecté');
+    }
+
+    // Vérifier que la conversation appartient à l'utilisateur
+    final conversation = await client
+        .from('chat_conversations')
+        .select('id')
+        .eq('id', conversationId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+    if (conversation == null) {
+      throw Exception('Conversation non trouvée');
+    }
+
+    // Supprimer la conversation (les messages seront supprimés en cascade)
+    await client.from('chat_conversations').delete().eq('id', conversationId);
+  }
+
   // Realtime subscriptions
   RealtimeChannel channel(String channelName) {
     return client.channel(channelName);

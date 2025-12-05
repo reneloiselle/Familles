@@ -30,6 +30,11 @@ dependencies:
   # Utils
   uuid: ^4.2.0
   share_plus: ^7.2.0
+  shared_preferences: ^2.2.0
+  http: ^1.1.0
+  audioplayers: ^5.2.1
+  path_provider: ^2.1.1
+  speech_to_text: ^7.0.0
   
   # Icons
   cupertino_icons: ^1.0.6
