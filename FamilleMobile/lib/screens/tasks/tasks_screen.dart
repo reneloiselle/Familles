@@ -409,7 +409,7 @@ class _CreateTaskFormState extends State<_CreateTaskForm> {
                 children: [
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      value: _assignedTo,
+                      initialValue: _assignedTo,
                       isExpanded: true,
                       decoration: const InputDecoration(
                         labelText: 'Assigner à',

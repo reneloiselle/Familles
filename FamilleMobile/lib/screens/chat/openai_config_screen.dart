@@ -162,11 +162,11 @@ class _OpenAIConfigScreenState extends State<OpenAIConfigScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
+                            const Row(
                               children: [
-                                const Icon(Icons.info_outline, color: Colors.blue),
-                                const SizedBox(width: 8),
-                                const Text(
+                                Icon(Icons.info_outline, color: Colors.blue),
+                                SizedBox(width: 8),
+                                Text(
                                   'Informations',
                                   style: TextStyle(
                                     fontSize: 18,
@@ -203,11 +203,11 @@ class _OpenAIConfigScreenState extends State<OpenAIConfigScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Row(
+                              const Row(
                                 children: [
-                                  const Icon(Icons.check_circle, color: Colors.green),
-                                  const SizedBox(width: 8),
-                                  const Text(
+                                  Icon(Icons.check_circle, color: Colors.green),
+                                  SizedBox(width: 8),
+                                  Text(
                                     'Clé API configurée',
                                     style: TextStyle(
                                       fontSize: 16,

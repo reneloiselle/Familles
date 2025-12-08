@@ -262,9 +262,9 @@ class FamilyCalendarView extends StatelessWidget {
 
     return SfCalendar(
       view: view,
-      resourceViewSettings: ResourceViewSettings(
+      resourceViewSettings: const ResourceViewSettings(
         size: 120,
-        displayNameTextStyle: const TextStyle(
+        displayNameTextStyle: TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.w500,
         ),

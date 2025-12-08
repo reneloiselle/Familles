@@ -151,9 +151,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     // S'assurer qu'on a une conversation
-    if (_conversationId == null) {
-      _conversationId = await _supabaseService.getOrCreateConversation();
-    }
+    _conversationId ??= await _supabaseService.getOrCreateConversation();
 
     // Ajouter le message de l'utilisateur
     final userMessageId = DateTime.now().millisecondsSinceEpoch.toString();
