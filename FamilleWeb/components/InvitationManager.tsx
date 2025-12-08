@@ -285,33 +285,32 @@ export function InvitationManager({ user, familyId }: InvitationManagerProps) {
                       {invitation.status === 'expired' && (
                         <span className="text-gray-500">Expirée</span>
                       )}
+                      {invitation.status === 'pending' && (
+                        <div className="flex gap-2 mt-2">
+                          <button
+                            onClick={() => {
+                              const link = getInvitationLink(invitation.token)
+                              copyToClipboard(link)
+                            }}
+                            className="text-primary-600 hover:text-primary-800 text-sm btn btn-secondary"
+                            title="Copier le lien d'invitation"
+                          >
+                            Copier le lien d'invitation
+                          </button>
+                          <button
+                            onClick={() => cancelInvitation(invitation.id)}
+                            className="text-red-600 hover:text-red-800 btn btn-secondary"
+                            title="Annuler l'invitation"
+                          >
+                            Annuler l'invitation
+                          </button>
+                        </div>
+                      )}
+
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  {invitation.status === 'pending' && (
-                    <>
-                      <button
-                        onClick={() => {
-                          const link = getInvitationLink(invitation.token)
-                          copyToClipboard(link)
-                        }}
-                        className="text-primary-600 hover:text-primary-800 text-sm"
-                        title="Copier le lien d'invitation"
-                      >
-                        Copier le lien
-                      </button>
-                      <button
-                        onClick={() => cancelInvitation(invitation.id)}
-                        className="text-red-600 hover:text-red-800"
-                        title="Annuler l'invitation"
-                      >
-                        <X className="w-5 h-5" />
-                      </button>
-                    </>
-                  )}
-                </div>
               </div>
             ))}
           </div>

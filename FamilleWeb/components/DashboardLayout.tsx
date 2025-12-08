@@ -59,7 +59,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
         isOpen={isMenuOpen} 
         onClose={() => setIsMenuOpen(false)} 
       />
-      <main className="pt-16 pb-8 px-4 max-w-7xl mx-auto">
+      <main className="pt-16 sm:pt-20 pb-6 sm:pb-8 px-3 sm:px-4 lg:px-6 max-w-7xl mx-auto container-mobile">
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
           {children}
         </div>

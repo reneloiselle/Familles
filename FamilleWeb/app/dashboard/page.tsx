@@ -79,6 +79,7 @@ export default async function DashboardPage() {
   const familyMemberId = familyMember.data.id
   const familyId = familyMember.data.family_id
   const isParent = familyMember.data.role === 'parent'
+  const familyName = (familyMember.data.families as any)?.name || ''
 
   const [upcomingSchedules, pendingTasks] = await Promise.all([
     getUpcomingSchedules(supabase, familyMemberId),
@@ -89,7 +90,7 @@ export default async function DashboardPage() {
     <div className="space-y-6">
       <div className="mb-6">
         <h1 className="text-2xl sm:text-3xl font-bold mb-2 bg-gradient-to-r from-primary-600 to-primary-800 bg-clip-text text-transparent">
-          Bienvenue dans la famille {familyMember.data.families?.name} !
+          Bienvenue dans la famille {familyName} !
         </h1>
         <p className="text-gray-600 text-sm sm:text-base">
           {isParent ? 'Vue parent - Vous pouvez gérer la famille complète' : 'Vue membre - Gérez votre agenda'}
@@ -98,7 +99,7 @@ export default async function DashboardPage() {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
         <Link href="/dashboard/family" className="card group">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+          <div className="flex flex-col sm:flex-row items-center sm:items-center gap-3">
             <div className="bg-gradient-to-br from-primary-100 to-primary-200 p-3 rounded-xl group-hover:scale-110 transition-transform duration-200">
               <Users className="w-5 h-5 sm:w-6 sm:h-6 text-primary-600" />
             </div>
@@ -110,7 +111,7 @@ export default async function DashboardPage() {
         </Link>
         
         <Link href="/dashboard/schedule" className="card group">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+          <div className="flex flex-col sm:flex-row items-center sm:items-center gap-3">
             <div className="bg-gradient-to-br from-blue-100 to-blue-200 p-3 rounded-xl group-hover:scale-110 transition-transform duration-200">
               <Calendar className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
             </div>
@@ -122,7 +123,7 @@ export default async function DashboardPage() {
         </Link>
         
         <Link href="/dashboard/tasks" className="card group">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+          <div className="flex flex-col sm:flex-row items-center sm:items-center gap-3">
             <div className="bg-gradient-to-br from-green-100 to-green-200 p-3 rounded-xl group-hover:scale-110 transition-transform duration-200">
               <CheckSquare className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
             </div>
@@ -134,7 +135,7 @@ export default async function DashboardPage() {
         </Link>
         
         <Link href="/dashboard/lists" className="card group">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+          <div className="flex flex-col sm:flex-row items-center sm:items-center gap-3">
             <div className="bg-gradient-to-br from-purple-100 to-purple-200 p-3 rounded-xl group-hover:scale-110 transition-transform duration-200">
               <List className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" />
             </div>

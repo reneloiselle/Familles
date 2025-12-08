@@ -33,22 +33,22 @@ export default async function Home() {
           </div>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 mt-12 sm:mt-16">
-            <div className="card text-left group hover:scale-105 transition-transform duration-300">
-              <div className="text-4xl mb-3">👨‍👩‍👧‍👦</div>
+            <div className="card text-center group hover:scale-105 transition-transform duration-300">
+              <div className="text-4xl mb-3 flex justify-center">👨‍👩‍👧‍👦</div>
               <h3 className="text-lg sm:text-xl font-semibold mb-2">Gestion de famille</h3>
               <p className="text-sm sm:text-base text-gray-600">
                 Créez votre famille et invitez les membres. Gérez les rôles et permissions facilement.
               </p>
             </div>
-            <div className="card text-left group hover:scale-105 transition-transform duration-300">
-              <div className="text-4xl mb-3">📅</div>
+            <div className="card text-center group hover:scale-105 transition-transform duration-300">
+              <div className="text-4xl mb-3 flex justify-center">📅</div>
               <h3 className="text-lg sm:text-xl font-semibold mb-2">Horaires synchronisés</h3>
               <p className="text-sm sm:text-base text-gray-600">
                 Visualisez les horaires de tous les membres. Les parents ont une vue complète de la famille.
               </p>
             </div>
-            <div className="card text-left group hover:scale-105 transition-transform duration-300 sm:col-span-2 lg:col-span-1">
-              <div className="text-4xl mb-3">✅</div>
+            <div className="card text-center group hover:scale-105 transition-transform duration-300 sm:col-span-2 lg:col-span-1">
+              <div className="text-4xl mb-3 flex justify-center">✅</div>
               <h3 className="text-lg sm:text-xl font-semibold mb-2">Tâches assignées</h3>
               <p className="text-sm sm:text-base text-gray-600">
                 Créez et assignez des tâches aux membres de la famille. Suivez leur progression.

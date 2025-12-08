@@ -5,16 +5,85 @@
 @layer base {
   body {
     @apply bg-gray-50 text-gray-900;
+    /* Taille de texte de base optimisée pour mobile */
+    font-size: 16px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   * {
     @apply scroll-smooth;
   }
+
+  /* Amélioration de la lisibilité sur mobile */
+  h1 {
+    font-size: 1.75rem; /* 28px */
+    line-height: 1.2;
+    font-weight: 700;
+  }
+
+  h2 {
+    font-size: 1.5rem; /* 24px */
+    line-height: 1.3;
+    font-weight: 600;
+  }
+
+  h3 {
+    font-size: 1.25rem; /* 20px */
+    line-height: 1.4;
+    font-weight: 600;
+  }
+
+  p {
+    font-size: 1rem; /* 16px */
+    line-height: 1.6;
+  }
+
+  /* Media queries pour les écrans plus grands */
+  @media (min-width: 640px) {
+    h1 {
+      font-size: 2rem; /* 32px */
+    }
+
+    h2 {
+      font-size: 1.75rem; /* 28px */
+    }
+
+    h3 {
+      font-size: 1.5rem; /* 24px */
+    }
+  }
+
+  @media (min-width: 1024px) {
+    h1 {
+      font-size: 2.5rem; /* 40px */
+    }
+
+    h2 {
+      font-size: 2rem; /* 32px */
+    }
+
+    h3 {
+      font-size: 1.75rem; /* 28px */
+    }
+  }
 }
 
 @layer components {
+  /* Boutons optimisés pour mobile-first */
   .btn {
-    @apply px-4 py-2 rounded-xl font-medium transition-all duration-200 active:scale-95;
+    @apply rounded-xl font-medium transition-all duration-200 active:scale-95;
+    /* Taille minimale pour faciliter le toucher sur mobile (44x44px recommandé) */
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0.75rem 1rem; /* 12px 16px */
+    font-size: 1rem; /* 16px */
+    line-height: 1.5;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
   }
   
   .btn-primary {
@@ -28,13 +97,159 @@
   .btn-danger {
     @apply bg-red-600 text-white hover:bg-red-700 shadow-md hover:shadow-lg;
   }
-  
-  .input {
-    @apply w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200;
+
+  /* Media queries pour les boutons sur écrans plus grands */
+  @media (min-width: 640px) {
+    .btn {
+      padding: 0.875rem 1.5rem; /* 14px 24px */
+      font-size: 1rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .btn {
+      padding: 1rem 2rem; /* 16px 32px */
+      font-size: 1.125rem; /* 18px */
+    }
   }
   
+  /* Inputs optimisés pour mobile */
+  .input {
+    @apply w-full border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all duration-200;
+    padding: 0.875rem 1rem; /* 14px 16px */
+    font-size: 1rem; /* 16px - évite le zoom automatique sur iOS */
+    line-height: 1.5;
+    min-height: 44px; /* Taille minimale pour faciliter le toucher */
+  }
+
+  @media (min-width: 640px) {
+    .input {
+      padding: 1rem 1.25rem; /* 16px 20px */
+    }
+  }
+  
+  /* Cards optimisées pour mobile-first */
   .card {
-    @apply bg-white rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 p-6 border border-gray-100;
+    @apply bg-white rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 border border-gray-100;
+    padding: 1rem; /* 16px sur mobile */
+  }
+
+  @media (min-width: 640px) {
+    .card {
+      padding: 1.5rem; /* 24px sur tablette */
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .card {
+      padding: 2rem; /* 32px sur desktop */
+    }
+  }
+
+  /* Navigation optimisée pour mobile */
+  .nav-link {
+    @apply transition-all duration-200;
+    min-height: 44px;
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  @media (min-width: 640px) {
+    .nav-link {
+      padding: 0.875rem 1.25rem;
+      font-size: 1.0625rem; /* 17px */
+    }
+  }
+
+  /* Header mobile optimisé */
+  .mobile-header {
+    height: 64px; /* 4rem - plus grand sur mobile pour faciliter le toucher */
+  }
+
+  @media (min-width: 640px) {
+    .mobile-header {
+      height: 72px; /* 4.5rem */
+    }
+  }
+
+  /* Sidebar optimisé pour mobile */
+  .mobile-sidebar {
+    width: 85vw;
+    max-width: 320px;
+  }
+
+  @media (min-width: 640px) {
+    .mobile-sidebar {
+      width: 384px; /* 24rem */
+      max-width: 384px;
+    }
+  }
+
+  /* Espacements optimisés pour mobile */
+  .container-mobile {
+    padding-left: 1rem; /* 16px */
+    padding-right: 1rem;
+  }
+
+  @media (min-width: 640px) {
+    .container-mobile {
+      padding-left: 1.5rem; /* 24px */
+      padding-right: 1.5rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .container-mobile {
+      padding-left: 2rem; /* 32px */
+      padding-right: 2rem;
+    }
+  }
+
+  /* Textes optimisés pour la lisibilité mobile */
+  .text-mobile {
+    font-size: 0.875rem; /* 14px */
+    line-height: 1.5;
+  }
+
+  @media (min-width: 640px) {
+    .text-mobile {
+      font-size: 1rem; /* 16px */
+    }
+  }
+
+  .text-small-mobile {
+    font-size: 0.75rem; /* 12px */
+    line-height: 1.4;
+  }
+
+  @media (min-width: 640px) {
+    .text-small-mobile {
+      font-size: 0.875rem; /* 14px */
+    }
+  }
+
+  /* Grilles responsives */
+  .grid-mobile {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem; /* 16px */
+  }
+
+  @media (min-width: 640px) {
+    .grid-mobile {
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1.5rem; /* 24px */
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .grid-mobile {
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2rem; /* 32px */
+    }
   }
 
   /* Animations personnalisées */
@@ -68,6 +283,73 @@
 
   .slide-in-from-bottom-4 {
     animation: slide-in-from-bottom 0.5s ease-out;
+  }
+
+  /* Amélioration de l'accessibilité tactile sur mobile */
+  @media (hover: none) and (pointer: coarse) {
+    /* Sur les appareils tactiles, augmenter les zones de toucher */
+    button, a, [role="button"] {
+      min-height: 44px;
+      min-width: 44px;
+    }
+
+    /* Réduire les effets hover sur mobile */
+    .hover\:shadow-lg:hover {
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    }
+  }
+
+  /* Optimisation pour les écrans très petits (< 375px) */
+  @media (max-width: 374px) {
+    .btn {
+      padding: 0.625rem 0.875rem; /* 10px 14px */
+      font-size: 0.9375rem; /* 15px */
+      min-height: 40px;
+    }
+
+    .card {
+      padding: 0.875rem; /* 14px */
+    }
+
+    h1 {
+      font-size: 1.5rem; /* 24px */
+    }
+
+    h2 {
+      font-size: 1.25rem; /* 20px */
+    }
+
+    h3 {
+      font-size: 1.125rem; /* 18px */
+    }
+  }
+
+  /* Optimisation pour les tablettes (640px - 1023px) */
+  @media (min-width: 640px) and (max-width: 1023px) {
+    .card {
+      border-radius: 1.5rem; /* 24px */
+    }
+  }
+
+  /* Optimisation pour les écrans larges (1024px+) */
+  @media (min-width: 1024px) {
+    .card {
+      border-radius: 2rem; /* 32px */
+    }
+
+    /* Améliorer les espacements sur grand écran */
+    .container-mobile {
+      max-width: 1280px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+  }
+
+  /* Optimisation pour les très grands écrans (1440px+) */
+  @media (min-width: 1440px) {
+    .container-mobile {
+      max-width: 1536px;
+    }
   }
 }
 
