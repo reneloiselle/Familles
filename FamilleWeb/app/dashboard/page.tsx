@@ -26,16 +26,22 @@ async function getUpcomingSchedules(supabase: any, familyMemberId: string) {
   return data || []
 }
 
-async function getPendingTasks(supabase: any, familyId: string) {
+async function getPendingTasks(supabase: any, familyId: string, familyMemberId: string, userId: string) {
   const { data } = await supabase
     .from('tasks')
     .select('*, family_members(id, user_id)')
     .eq('family_id', familyId)
-    .in('status', ['pending', 'in_progress'])
+    .eq('status', 'todo')
+    .or(`created_by.eq.${userId},assigned_to.eq.${familyMemberId}`)
     .order('due_date', { ascending: true })
-    .limit(5)
+    .limit(10) // Limiter à 10 pour avoir assez après filtrage
   
-  return data || []
+  // Double vérification côté client pour s'assurer du filtrage
+  const filteredData = (data || []).filter((task: any) => 
+    task.created_by === userId || task.assigned_to === familyMemberId
+  ).slice(0, 5) // Prendre les 5 premières après filtrage
+  
+  return filteredData
 }
 
 export default async function DashboardPage() {
@@ -83,7 +89,7 @@ export default async function DashboardPage() {
 
   const [upcomingSchedules, pendingTasks] = await Promise.all([
     getUpcomingSchedules(supabase, familyMemberId),
-    getPendingTasks(supabase, familyId),
+    getPendingTasks(supabase, familyId, familyMemberId, user.id),
   ])
 
   return (
@@ -176,7 +182,7 @@ export default async function DashboardPage() {
 
         <div className="card">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg sm:text-xl font-semibold">Tâches en cours</h2>
+            <h2 className="text-lg sm:text-xl font-semibold">Mes tâches à faire</h2>
             <Link href="/dashboard/tasks" className="text-primary-600 hover:text-primary-700 text-sm font-medium transition-colors">
               Voir tout →
             </Link>
@@ -184,7 +190,7 @@ export default async function DashboardPage() {
           {pendingTasks.length === 0 ? (
             <div className="text-center py-8">
               <CheckSquare className="w-12 h-12 text-gray-300 mx-auto mb-2" />
-              <p className="text-gray-500 text-sm">Aucune tâche en cours</p>
+              <p className="text-gray-500 text-sm">Aucune tâche à faire</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -198,11 +204,9 @@ export default async function DashboardPage() {
                   </div>
                   <span className={`px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap flex-shrink-0 ${
                     task.status === 'completed' ? 'bg-green-100 text-green-700' :
-                    task.status === 'in_progress' ? 'bg-blue-100 text-blue-700' :
                     'bg-yellow-100 text-yellow-700'
                   }`}>
-                    {task.status === 'completed' ? 'Terminé' :
-                     task.status === 'in_progress' ? 'En cours' : 'En attente'}
+                    {task.status === 'completed' ? 'Complété' : 'À faire'}
                   </span>
                 </div>
               ))}

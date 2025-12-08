@@ -15,25 +15,38 @@ async function getUserFamily(supabase: any, userId: string) {
 async function getFamilyMembers(supabase: any, familyId: string) {
   const { data } = await supabase
     .from('family_members')
-    .select('id, user_id, role, avatar_url')
+    .select('id, user_id, role, avatar_url, name, email')
     .eq('family_id', familyId)
 
   return data || []
 }
 
-async function getTasks(supabase: any, familyId: string, status?: string) {
+async function getTasks(supabase: any, familyId: string, familyMemberId: string, userId: string, status?: string) {
   let query = supabase
     .from('tasks')
     .select('*, family_members(id, user_id, role, avatar_url)')
     .eq('family_id', familyId)
+    // Filtrer pour ne montrer que les tâches créées par l'utilisateur ou assignées à l'utilisateur
+    .or(`created_by.eq.${userId},assigned_to.eq.${familyMemberId}`)
+    // Trier par priorité (high, medium, low) puis par due_date
+    .order('priority', { ascending: false, nullsFirst: false })
 
   if (status && status !== 'all') {
     query = query.eq('status', status)
   }
 
-  const { data } = await query.order('due_date', { ascending: true }).order('created_at', { ascending: false })
+  // Trier par priorité (high, medium, low) puis par due_date puis par created_at
+  const { data } = await query
+    .order('priority', { ascending: false, nullsFirst: false })
+    .order('due_date', { ascending: true })
+    .order('created_at', { ascending: false })
 
-  return data || []
+  // Double vérification côté client pour s'assurer du filtrage
+  const filteredData = (data || []).filter((task: any) => 
+    task.created_by === userId || task.assigned_to === familyMemberId
+  )
+
+  return filteredData
 }
 
 export default async function TasksPage({
@@ -56,7 +69,7 @@ export default async function TasksPage({
 
   const familyMembers = await getFamilyMembers(supabase, familyMember.family_id)
   const status = searchParams.status || 'all'
-  const tasks = await getTasks(supabase, familyMember.family_id, status)
+  const tasks = await getTasks(supabase, familyMember.family_id, familyMember.id, user.id, status)
 
   return (
     <div className="max-w-6xl mx-auto">
