@@ -9,8 +9,10 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@react-google-maps/api": "^2.20.7",
     "@supabase/auth-helpers-nextjs": "^0.8.7",
     "@supabase/supabase-js": "^2.39.0",
+    "@types/google.maps": "^3.58.1",
     "clsx": "^2.1.0",
     "date-fns": "^3.0.6",
     "lucide-react": "^0.303.0",

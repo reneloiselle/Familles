@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { Plus, Calendar as CalendarIcon, Clock, Settings, MapPin } from 'lucide-react'
 import { User } from '@supabase/supabase-js'
 import { CalendarSubscriptionManager } from './CalendarSubscriptionManager'
+import { LocationPicker } from './LocationPicker'
 
 interface Schedule {
   id: string
@@ -62,6 +63,7 @@ export function ScheduleManagement({
 }: ScheduleManagementProps) {
   const [showForm, setShowForm] = useState(false)
   const [showSubscriptions, setShowSubscriptions] = useState(false)
+  const [showLocationPicker, setShowLocationPicker] = useState(false)
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [selectedDate, setSelectedDate] = useState(initialDate)
   const [view, setView] = useState(initialView)
@@ -557,14 +559,35 @@ export function ScheduleManagement({
               <label htmlFor="location" className="block text-sm font-medium text-gray-700 mb-1">
                 Localisation (optionnel)
               </label>
-              <input
-                id="location"
-                type="text"
-                value={formData.location}
-                onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                className="input"
-                placeholder="Adresse, lieu, etc."
-              />
+              <div className="flex gap-2">
+                <input
+                  id="location"
+                  type="text"
+                  value={formData.location}
+                  onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                  className="input flex-1"
+                  placeholder="Adresse, lieu, etc."
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowLocationPicker(!showLocationPicker)}
+                  className="btn btn-secondary flex items-center gap-2"
+                >
+                  <MapPin className="w-4 h-4" />
+                  {showLocationPicker ? 'Masquer' : 'Carte'}
+                </button>
+              </div>
+              {showLocationPicker && (
+                <div className="mt-3 p-4 border border-gray-300 rounded-lg bg-white">
+                  <LocationPicker
+                    value={formData.location}
+                    onChange={(address) => {
+                      setFormData({ ...formData, location: address })
+                    }}
+                    onClose={() => setShowLocationPicker(false)}
+                  />
+                </div>
+              )}
             </div>
 
             <div className="grid md:grid-cols-3 gap-4">
