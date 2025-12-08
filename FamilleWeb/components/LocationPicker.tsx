@@ -28,6 +28,7 @@ export function LocationPicker({ value, onChange, onClose }: LocationPickerProps
   const [map, setMap] = useState<google.maps.Map | null>(null)
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null)
   const [address, setAddress] = useState(value)
+  const [geocodedValue, setGeocodedValue] = useState<string>('')
 
   // Synchroniser avec la valeur externe
   useEffect(() => {
@@ -41,6 +42,29 @@ export function LocationPicker({ value, onChange, onClose }: LocationPickerProps
     libraries,
   })
 
+  // Geocoder l'adresse existante quand la carte est chargée et qu'une valeur est présente
+  useEffect(() => {
+    if (isLoaded && map && value && value.trim() && value !== geocodedValue) {
+      const geocoder = new google.maps.Geocoder()
+      geocoder.geocode({ address: value }, (results, status) => {
+        if (status === 'OK' && results && results[0]) {
+          const location = results[0].geometry.location
+          const lat = location.lat()
+          const lng = location.lng()
+          const formattedAddress = results[0].formatted_address
+          
+          setSelectedLocation({ lat, lng })
+          setMapCenter({ lat, lng })
+          setAddress(formattedAddress)
+          setGeocodedValue(value)
+        } else if (status === 'ZERO_RESULTS') {
+          // Si aucune résolution trouvée, on garde l'adresse mais on ne centre pas la carte
+          setGeocodedValue(value)
+        }
+      })
+    }
+  }, [isLoaded, map, value, geocodedValue])
+
   const onPlaceChanged = useCallback(() => {
     if (autocompleteRef.current) {
       const place = autocompleteRef.current.getPlace()
@@ -53,6 +77,7 @@ export function LocationPicker({ value, onChange, onClose }: LocationPickerProps
         setSelectedLocation({ lat, lng })
         setMapCenter({ lat, lng })
         setAddress(formattedAddress)
+        setGeocodedValue(formattedAddress)
         onChange(formattedAddress, lat, lng)
       }
     }
@@ -73,11 +98,13 @@ export function LocationPicker({ value, onChange, onClose }: LocationPickerProps
           if (status === 'OK' && results && results[0]) {
             const formattedAddress = results[0].formatted_address
             setAddress(formattedAddress)
+            setGeocodedValue(formattedAddress)
             onChange(formattedAddress, lat, lng)
           } else {
             // Si le geocoding échoue, utiliser les coordonnées
             const coordAddress = `${lat.toFixed(6)}, ${lng.toFixed(6)}`
             setAddress(coordAddress)
+            setGeocodedValue(coordAddress)
             onChange(coordAddress, lat, lng)
           }
         })
@@ -94,6 +121,7 @@ export function LocationPicker({ value, onChange, onClose }: LocationPickerProps
   const clearLocation = () => {
     setSelectedLocation(null)
     setAddress('')
+    setGeocodedValue('')
     onChange('')
   }
 

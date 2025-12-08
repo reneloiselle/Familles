@@ -7,6 +7,7 @@ import { Plus, Calendar as CalendarIcon, Clock, Settings, MapPin, X, Edit2, Tras
 import { User } from '@supabase/supabase-js'
 import { CalendarSubscriptionManager } from './CalendarSubscriptionManager'
 import { LocationPicker } from './LocationPicker'
+import { LocationViewer } from './LocationViewer'
 
 interface Schedule {
   id: string
@@ -66,6 +67,7 @@ export function ScheduleManagement({
   const [showSubscriptions, setShowSubscriptions] = useState(false)
   const [showLocationPicker, setShowLocationPicker] = useState(false)
   const [showEditLocationPicker, setShowEditLocationPicker] = useState(false)
+  const [viewingLocation, setViewingLocation] = useState<string | null>(null)
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [selectedDate, setSelectedDate] = useState(initialDate)
   const [view, setView] = useState(initialView)
@@ -1075,7 +1077,16 @@ export function ScheduleManagement({
                               {schedule.location && (
                                 <p className="text-sm text-gray-600 mt-2 flex items-center gap-1">
                                   <MapPin className="w-4 h-4" />
-                                  {schedule.location}
+                                  <span>{schedule.location}</span>
+                                  {isExternal && (
+                                    <button
+                                      onClick={() => setViewingLocation(schedule.location || '')}
+                                      className="ml-2 text-blue-600 hover:text-blue-800 text-xs underline"
+                                      title="Voir sur la carte"
+                                    >
+                                      Voir sur la carte
+                                    </button>
+                                  )}
                                 </p>
                               )}
                             </div>
@@ -1172,9 +1183,18 @@ export function ScheduleManagement({
                               <p className="text-sm text-gray-600 mt-2">{schedule.description}</p>
                             )}
                             {schedule.location && (
-                              <p className="text-sm text-gray-600 mt-2 flex items-center gap-1">
+                              <p className="text-sm text-gray-600 mt-2 flex items-center gap-1 flex-wrap">
                                 <MapPin className="w-4 h-4" />
-                                {schedule.location}
+                                <span>{schedule.location}</span>
+                                {schedule.subscription_id && (
+                                  <button
+                                    onClick={() => setViewingLocation(schedule.location || '')}
+                                    className="ml-2 text-blue-600 hover:text-blue-800 text-xs underline"
+                                    title="Voir sur la carte"
+                                  >
+                                    Voir sur la carte
+                                  </button>
+                                )}
                               </p>
                             )}
                           </div>
@@ -1328,6 +1348,14 @@ export function ScheduleManagement({
             </p>
           )}
         </div>
+      )}
+
+      {/* Popup pour afficher la localisation iCal */}
+      {viewingLocation && (
+        <LocationViewer
+          address={viewingLocation}
+          onClose={() => setViewingLocation(null)}
+        />
       )}
     </div>
   )
