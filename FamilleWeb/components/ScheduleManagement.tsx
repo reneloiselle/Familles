@@ -64,6 +64,7 @@ export function ScheduleManagement({
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [selectedDate, setSelectedDate] = useState(initialDate)
   const [view, setView] = useState(initialView)
+  const [localSchedules, setLocalSchedules] = useState<Schedule[]>(schedules)
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -77,9 +78,68 @@ export function ScheduleManagement({
   const router = useRouter()
   const supabase = createClient()
 
+  // Synchroniser les horaires initiaux
+  useEffect(() => {
+    setLocalSchedules(schedules)
+  }, [schedules])
+
   useEffect(() => {
     loadSubscriptions()
   }, [familyMembers])
+
+  const getWeekStart = (dateStr: string) => {
+    const date = new Date(dateStr + 'T00:00:00')
+    const day = date.getDay()
+    const monday = new Date(date)
+    monday.setDate(date.getDate() - day + (day === 0 ? -6 : 1))
+    return monday.toISOString().split('T')[0]
+  }
+
+  // Recharger les horaires quand la date ou la vue change
+  useEffect(() => {
+    const loadSchedules = async () => {
+      const familyMemberIds = familyMembers.map(m => m.id)
+      
+      if (familyMemberIds.length === 0) {
+        setLocalSchedules([])
+        return
+      }
+
+      let query = supabase
+        .from('schedules')
+        .select('*, family_members(id, user_id, role, email, name, avatar_url)')
+        .in('family_member_id', familyMemberIds)
+
+      if (view === 'family') {
+        // Pour la vue family, afficher les 7 prochains jours à partir d'aujourd'hui
+        const today = new Date().toISOString().split('T')[0]
+        const endDate = new Date(today)
+        endDate.setDate(endDate.getDate() + 7)
+        const endDateStr = endDate.toISOString().split('T')[0]
+        query = query.gte('date', today).lte('date', endDateStr)
+      } else if (view === 'week') {
+        const weekStart = getWeekStart(selectedDate)
+        const weekEnd = new Date(weekStart)
+        weekEnd.setDate(weekEnd.getDate() + 6)
+        query = query.gte('date', weekStart).lte('date', weekEnd.toISOString().split('T')[0])
+      }
+      // Pour 'personal', on filtre côté client
+
+      const { data, error } = await query
+        .order('date', { ascending: true })
+        .order('start_time', { ascending: true })
+
+      if (error) {
+        console.error('Error loading schedules:', error)
+        return
+      }
+
+      setLocalSchedules(data || [])
+    }
+
+    loadSchedules()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate, view])
 
   const loadSubscriptions = async () => {
     const { data: subs } = await supabase
@@ -119,7 +179,36 @@ export function ScheduleManagement({
 
       if (error) throw error
 
-      router.refresh()
+      // Recharger les horaires localement selon la vue actuelle
+      const familyMemberIds = familyMembers.map(m => m.id)
+      let reloadQuery = supabase
+        .from('schedules')
+        .select('*, family_members(id, user_id, role, email, name, avatar_url)')
+        .in('family_member_id', familyMemberIds)
+
+      if (view === 'family') {
+        // Pour la vue family, afficher les 7 prochains jours à partir d'aujourd'hui
+        const today = new Date().toISOString().split('T')[0]
+        const endDate = new Date(today)
+        endDate.setDate(endDate.getDate() + 7)
+        const endDateStr = endDate.toISOString().split('T')[0]
+        reloadQuery = reloadQuery.gte('date', today).lte('date', endDateStr)
+      } else if (view === 'week') {
+        const weekStart = getWeekStart(selectedDate)
+        const weekEnd = new Date(weekStart)
+        weekEnd.setDate(weekEnd.getDate() + 6)
+        reloadQuery = reloadQuery.gte('date', weekStart).lte('date', weekEnd.toISOString().split('T')[0])
+      }
+      // Pour 'personal', on recharge tout et on filtre côté client
+
+      const { data: updatedSchedules } = await reloadQuery
+        .order('date', { ascending: true })
+        .order('start_time', { ascending: true })
+
+      if (updatedSchedules) {
+        setLocalSchedules(updatedSchedules)
+      }
+
       setShowForm(false)
       setFormData({
         title: '',
@@ -152,9 +241,12 @@ export function ScheduleManagement({
 
       if (error) throw error
 
-      router.refresh()
+      // Retirer immédiatement de la liste locale
+      setLocalSchedules((prev) => prev.filter((s) => s.id !== scheduleId))
     } catch (err: any) {
       setError(err.message || 'Erreur lors de la suppression')
+      // En cas d'erreur, recharger depuis le serveur
+      router.refresh()
     } finally {
       setLoading(false)
     }
@@ -180,10 +272,8 @@ export function ScheduleManagement({
   const weekDays = view === 'week' ? getWeekDays(selectedDate) : []
 
   const filteredSchedules = view === 'personal'
-    ? schedules.filter(s => s.family_members?.user_id === user.id)
-    : view === 'week'
-      ? schedules // Show all schedules for the week
-      : schedules.filter(s => s.date === selectedDate)
+    ? localSchedules.filter(s => s.family_members?.user_id === user.id)
+    : localSchedules
 
   const groupedSchedules = filteredSchedules.reduce((acc: any, schedule) => {
     const key = schedule.date
@@ -204,6 +294,67 @@ export function ScheduleManagement({
   const getMemberAvatar = (memberId: string) => {
     const member = familyMembers.find(m => m.id === memberId)
     return member?.avatar_url || '👤'
+  }
+
+  // Fonction pour vérifier si deux horaires se chevauchent
+  const schedulesOverlap = (schedule1: Schedule, schedule2: Schedule): boolean => {
+    if (schedule1.date !== schedule2.date) return false
+    
+    // Convertir les heures en minutes pour faciliter la comparaison
+    const timeToMinutes = (time: string) => {
+      const [hours, minutes] = time.split(':').map(Number)
+      return hours * 60 + minutes
+    }
+    
+    const start1 = timeToMinutes(schedule1.start_time)
+    const end1 = timeToMinutes(schedule1.end_time)
+    const start2 = timeToMinutes(schedule2.start_time)
+    const end2 = timeToMinutes(schedule2.end_time)
+    
+    // Deux horaires se chevauchent si l'un commence avant que l'autre se termine
+    // et se termine après que l'autre commence
+    return start1 < end2 && end1 > start2
+  }
+
+  // Fonction pour obtenir les IDs des horaires qui se chevauchent avec un horaire donné
+  const getOverlappingScheduleIds = (schedule: Schedule, allSchedules: Schedule[]): string[] => {
+    return allSchedules
+      .filter(s => s.id !== schedule.id && schedulesOverlap(schedule, s))
+      .map(s => s.id)
+  }
+
+  // Fonction pour vérifier si deux horaires sont back-to-back (moins de 30 minutes entre eux)
+  const schedulesAreBackToBack = (schedule1: Schedule, schedule2: Schedule): boolean => {
+    // Doit être le même membre et la même date
+    if (schedule1.family_member_id !== schedule2.family_member_id || schedule1.date !== schedule2.date) {
+      return false
+    }
+
+    // Convertir les heures en minutes pour faciliter la comparaison
+    const timeToMinutes = (time: string) => {
+      const [hours, minutes] = time.split(':').map(Number)
+      return hours * 60 + minutes
+    }
+
+    const end1 = timeToMinutes(schedule1.end_time)
+    const start2 = timeToMinutes(schedule2.start_time)
+    const end2 = timeToMinutes(schedule2.end_time)
+    const start1 = timeToMinutes(schedule1.start_time)
+
+    // Vérifier si schedule2 commence moins de 30 minutes après la fin de schedule1
+    const gapAfter1 = start2 - end1
+    // Vérifier si schedule1 commence moins de 30 minutes après la fin de schedule2
+    const gapAfter2 = start1 - end2
+
+    // Back-to-back si l'écart est entre 0 et 30 minutes (inclus)
+    return (gapAfter1 >= 0 && gapAfter1 <= 30) || (gapAfter2 >= 0 && gapAfter2 <= 30)
+  }
+
+  // Fonction pour obtenir les IDs des horaires back-to-back avec un horaire donné
+  const getBackToBackScheduleIds = (schedule: Schedule, allSchedules: Schedule[]): string[] => {
+    return allSchedules
+      .filter(s => s.id !== schedule.id && schedulesAreBackToBack(schedule, s))
+      .map(s => s.id)
   }
 
   return (
@@ -286,10 +437,10 @@ export function ScheduleManagement({
         </div>
       )}
 
-      {(view === 'family' || view === 'week') && (
+      {view === 'week' && (
         <div className="card">
           <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-2">
-            {view === 'week' ? 'Semaine à visualiser' : 'Date à visualiser'}
+            Semaine à visualiser
           </label>
           <div className="flex items-center gap-4">
             <input
@@ -302,42 +453,40 @@ export function ScheduleManagement({
               }}
               className="input"
             />
-            {view === 'week' && (
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    const newDate = new Date(selectedDate)
-                    newDate.setDate(newDate.getDate() - 7)
-                    setSelectedDate(newDate.toISOString().split('T')[0])
-                    router.push(`/dashboard/schedule?view=week&date=${newDate.toISOString().split('T')[0]}`)
-                  }}
-                  className="btn btn-secondary"
-                >
-                  ← Semaine précédente
-                </button>
-                <button
-                  onClick={() => {
-                    const newDate = new Date(selectedDate)
-                    newDate.setDate(newDate.getDate() + 7)
-                    setSelectedDate(newDate.toISOString().split('T')[0])
-                    router.push(`/dashboard/schedule?view=week&date=${newDate.toISOString().split('T')[0]}`)
-                  }}
-                  className="btn btn-secondary"
-                >
-                  Semaine suivante →
-                </button>
-                <button
-                  onClick={() => {
-                    const today = new Date().toISOString().split('T')[0]
-                    setSelectedDate(today)
-                    router.push(`/dashboard/schedule?view=week&date=${today}`)
-                  }}
-                  className="btn btn-secondary"
-                >
-                  Cette semaine
-                </button>
-              </div>
-            )}
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  const newDate = new Date(selectedDate)
+                  newDate.setDate(newDate.getDate() - 7)
+                  setSelectedDate(newDate.toISOString().split('T')[0])
+                  router.push(`/dashboard/schedule?view=week&date=${newDate.toISOString().split('T')[0]}`)
+                }}
+                className="btn btn-secondary"
+              >
+                ← Semaine précédente
+              </button>
+              <button
+                onClick={() => {
+                  const newDate = new Date(selectedDate)
+                  newDate.setDate(newDate.getDate() + 7)
+                  setSelectedDate(newDate.toISOString().split('T')[0])
+                  router.push(`/dashboard/schedule?view=week&date=${newDate.toISOString().split('T')[0]}`)
+                }}
+                className="btn btn-secondary"
+              >
+                Semaine suivante →
+              </button>
+              <button
+                onClick={() => {
+                  const today = new Date().toISOString().split('T')[0]
+                  setSelectedDate(today)
+                  router.push(`/dashboard/schedule?view=week&date=${today}`)
+                }}
+                className="btn btn-secondary"
+              >
+                Cette semaine
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -459,66 +608,103 @@ export function ScheduleManagement({
       )}
 
       {view === 'family' && (
-        <div className="card">
-          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-            <CalendarIcon className="w-5 h-5" />
-            Horaire de la famille - {new Date(selectedDate).toLocaleDateString('fr-FR', {
-              weekday: 'long',
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric'
-            })}
-          </h2>
+        <div className="space-y-6">
+          <div className="card">
+            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+              <CalendarIcon className="w-5 h-5" />
+              Agenda de la famille - 7 prochains jours
+            </h2>
+          </div>
 
           {filteredSchedules.length === 0 ? (
-            <p className="text-gray-500">Aucun horaire pour cette date</p>
-          ) : (
-            <div className="space-y-4">
-              {filteredSchedules.map((schedule) => {
-                const isExternal = !!schedule.subscription_id
-                const color = isExternal ? getSubscriptionColor(schedule.subscription_id) : undefined
-
-                return (
-                  <div
-                    key={schedule.id}
-                    className={`border-l-4 pl-4 py-3 bg-gray-50 rounded ${isExternal ? '' : 'border-primary-500'}`}
-                    style={isExternal ? { borderLeftColor: color || '#3B82F6' } : {}}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <h3 className="font-semibold flex items-center gap-2">
-                          {schedule.title}
-                          {isExternal && (
-                            <span className="text-xs bg-gray-200 text-gray-600 px-1 rounded">iCal</span>
-                          )}
-                        </h3>
-                        <p className="text-sm text-gray-600 mt-1 flex items-center gap-2">
-                          <span className="text-lg">{getMemberAvatar(schedule.family_member_id)}</span>
-                          {getMemberName(schedule.family_member_id)}
-                        </p>
-                        <div className="flex items-center gap-4 mt-2 text-sm text-gray-600">
-                          <span className="flex items-center gap-1">
-                            <Clock className="w-4 h-4" />
-                            {schedule.start_time} - {schedule.end_time}
-                          </span>
-                        </div>
-                        {schedule.description && (
-                          <p className="text-sm text-gray-600 mt-2">{schedule.description}</p>
-                        )}
-                      </div>
-                      {(!isExternal && (isParent || schedule.family_members?.user_id === user.id)) && (
-                        <button
-                          onClick={() => deleteSchedule(schedule.id)}
-                          className="text-red-600 hover:text-red-800 text-sm"
-                        >
-                          Supprimer
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
+            <div className="card text-center py-12">
+              <CalendarIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-500">Aucun horaire pour les 7 prochains jours</p>
             </div>
+          ) : (
+            Object.entries(groupedSchedules)
+              .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
+              .map(([date, daySchedules]: [string, Schedule[]]) => (
+                <div key={date} className="card">
+                  <h3 className="text-lg font-semibold mb-4 pb-2 border-b border-gray-200">
+                    {new Date(date).toLocaleDateString('fr-FR', {
+                      weekday: 'long',
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric'
+                    })}
+                  </h3>
+                  <div className="space-y-3">
+                    {daySchedules.map((schedule) => {
+                      const isExternal = !!schedule.subscription_id
+                      const color = isExternal ? getSubscriptionColor(schedule.subscription_id) : undefined
+                      const overlappingIds = getOverlappingScheduleIds(schedule, daySchedules)
+                      const hasOverlap = overlappingIds.length > 0
+                      const backToBackIds = getBackToBackScheduleIds(schedule, daySchedules)
+                      const hasBackToBack = backToBackIds.length > 0 && !hasOverlap
+
+                      return (
+                        <div
+                          key={schedule.id}
+                          className={`border-l-4 pl-4 py-3 rounded transition-all ${
+                            hasOverlap 
+                              ? 'bg-red-50 border-red-500 shadow-sm' 
+                              : hasBackToBack
+                                ? 'bg-yellow-50 border-yellow-400'
+                                : isExternal 
+                                  ? 'bg-gray-50' 
+                                  : 'bg-gray-50 border-primary-500'
+                          }`}
+                          style={isExternal && !hasOverlap && !hasBackToBack ? { borderLeftColor: color || '#3B82F6' } : {}}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <h4 className="font-semibold flex items-center gap-2 flex-wrap">
+                                {schedule.title}
+                                {hasOverlap && (
+                                  <span className="text-xs bg-red-200 text-red-700 px-2 py-0.5 rounded font-medium" title="Conflit d'horaire">
+                                    ⚠️ Conflit
+                                  </span>
+                                )}
+                                {hasBackToBack && (
+                                  <span className="text-xs bg-yellow-200 text-yellow-700 px-2 py-0.5 rounded font-medium" title="Possibilité de problème de transport">
+                                    🚗 Transport
+                                  </span>
+                                )}
+                                {isExternal && !hasOverlap && !hasBackToBack && (
+                                  <span className="text-xs bg-gray-200 text-gray-600 px-1 rounded">iCal</span>
+                                )}
+                              </h4>
+                              <p className="text-sm text-gray-600 mt-1 flex items-center gap-2">
+                                <span className="text-lg">{getMemberAvatar(schedule.family_member_id)}</span>
+                                {getMemberName(schedule.family_member_id)}
+                              </p>
+                              <div className="flex items-center gap-4 mt-2 text-sm text-gray-600">
+                                <span className="flex items-center gap-1">
+                                  <Clock className="w-4 h-4" />
+                                  {schedule.start_time} - {schedule.end_time}
+                                </span>
+                              </div>
+                              {schedule.description && (
+                                <p className="text-sm text-gray-600 mt-2">{schedule.description}</p>
+                              )}
+                            </div>
+                            {(!isExternal && (isParent || schedule.family_members?.user_id === user.id)) && (
+                              <button
+                                onClick={() => deleteSchedule(schedule.id)}
+                                className="text-red-600 hover:text-red-800 text-sm p-2 rounded-lg hover:bg-red-50 transition-colors"
+                                title="Supprimer"
+                              >
+                                Supprimer
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))
           )}
         </div>
       )}
@@ -544,14 +730,38 @@ export function ScheduleManagement({
                     })}
                   </h2>
                   <div className="space-y-3">
-                    {schedules.map((schedule: Schedule) => (
-                      <div
-                        key={schedule.id}
-                        className="border-l-4 border-primary-500 pl-4 py-3 bg-gray-50 rounded"
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <h3 className="font-semibold">{schedule.title}</h3>
+                    {schedules.map((schedule: Schedule) => {
+                      const overlappingIds = getOverlappingScheduleIds(schedule, schedules)
+                      const hasOverlap = overlappingIds.length > 0
+                      const backToBackIds = getBackToBackScheduleIds(schedule, schedules)
+                      const hasBackToBack = backToBackIds.length > 0 && !hasOverlap
+                      
+                      return (
+                        <div
+                          key={schedule.id}
+                          className={`border-l-4 pl-4 py-3 rounded transition-all ${
+                            hasOverlap 
+                              ? 'bg-red-50 border-red-500 shadow-sm' 
+                              : hasBackToBack
+                                ? 'bg-yellow-50 border-yellow-400'
+                                : 'bg-gray-50 border-primary-500'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <h3 className="font-semibold flex items-center gap-2 flex-wrap">
+                                {schedule.title}
+                                {hasOverlap && (
+                                  <span className="text-xs bg-red-200 text-red-700 px-2 py-0.5 rounded font-medium" title="Conflit d'horaire">
+                                    ⚠️ Conflit
+                                  </span>
+                                )}
+                                {hasBackToBack && (
+                                  <span className="text-xs bg-yellow-200 text-yellow-700 px-2 py-0.5 rounded font-medium" title="Possibilité de problème de transport">
+                                    🚗 Transport
+                                  </span>
+                                )}
+                              </h3>
                             <div className="flex items-center gap-4 mt-2 text-sm text-gray-600">
                               <span className="flex items-center gap-1">
                                 <Clock className="w-4 h-4" />
@@ -564,13 +774,15 @@ export function ScheduleManagement({
                           </div>
                           <button
                             onClick={() => deleteSchedule(schedule.id)}
-                            className="text-red-600 hover:text-red-800 text-sm"
+                            className="text-red-600 hover:text-red-800 text-sm p-2 rounded-lg hover:bg-red-50 transition-colors"
+                            title="Supprimer"
                           >
                             Supprimer
                           </button>
                         </div>
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 </div>
               ))
@@ -648,15 +860,31 @@ export function ScheduleManagement({
                               {daySchedules.map((schedule: Schedule) => {
                                 const isExternal = !!schedule.subscription_id
                                 const color = isExternal ? getSubscriptionColor(schedule.subscription_id) : undefined
+                                const overlappingIds = getOverlappingScheduleIds(schedule, daySchedules)
+                                const hasOverlap = overlappingIds.length > 0
+                                const backToBackIds = getBackToBackScheduleIds(schedule, daySchedules)
+                                const hasBackToBack = backToBackIds.length > 0 && !hasOverlap
 
                                 return (
                                   <div
                                     key={schedule.id}
-                                    className={`text-white rounded p-2 text-xs cursor-pointer transition-colors ${isExternal ? '' : 'bg-primary-500 hover:bg-primary-600'}`}
-                                    style={isExternal ? { backgroundColor: color || '#3B82F6' } : {}}
-                                    title={`${schedule.title} - ${schedule.start_time} à ${schedule.end_time}`}
+                                    className={`rounded p-2 text-xs cursor-pointer transition-colors border-2 ${
+                                      hasOverlap
+                                        ? 'bg-red-500 text-white border-red-700 shadow-md'
+                                        : hasBackToBack
+                                          ? 'bg-yellow-500 text-white border-yellow-600'
+                                          : isExternal
+                                            ? 'text-white border-transparent'
+                                            : 'bg-primary-500 text-white border-primary-700 hover:bg-primary-600'
+                                    }`}
+                                    style={isExternal && !hasOverlap && !hasBackToBack ? { backgroundColor: color || '#3B82F6' } : {}}
+                                    title={`${schedule.title} - ${schedule.start_time} à ${schedule.end_time}${hasOverlap ? ' (Conflit d\'horaire)' : hasBackToBack ? ' (Possibilité de problème de transport)' : ''}`}
                                   >
-                                    <div className="font-semibold truncate">{schedule.title}</div>
+                                    <div className="font-semibold truncate flex items-center gap-1">
+                                      {hasOverlap && <span>⚠️</span>}
+                                      {hasBackToBack && !hasOverlap && <span>🚗</span>}
+                                      {schedule.title}
+                                    </div>
                                     <div className="truncate">{schedule.start_time} - {schedule.end_time}</div>
                                   </div>
                                 )

@@ -21,7 +21,13 @@ async function getFamilyMembers(supabase: any, familyId: string) {
   return data || []
 }
 
-async function getSchedules(supabase: any, familyMemberIds: string[], date?: string, weekStart?: string) {
+async function getSchedules(
+  supabase: any, 
+  familyMemberIds: string[], 
+  date?: string, 
+  weekStart?: string,
+  dateRange?: { start: string; end: string }
+) {
   if (familyMemberIds.length === 0) {
     return []
   }
@@ -31,7 +37,10 @@ async function getSchedules(supabase: any, familyMemberIds: string[], date?: str
     .select('*, family_members(id, user_id, role, email, name, avatar_url)')
     .in('family_member_id', familyMemberIds)
 
-  if (date) {
+  if (dateRange) {
+    // Plage de dates (pour la vue family par défaut : aujourd'hui + 7 jours)
+    query = query.gte('date', dateRange.start).lte('date', dateRange.end)
+  } else if (date) {
     query = query.eq('date', date)
   } else if (weekStart) {
     // Get schedules for the week (7 days starting from weekStart)
@@ -84,16 +93,24 @@ export default async function SchedulePage({
     return monday.toISOString().split('T')[0]
   }
 
-  const weekStart = view === 'week' ? getWeekStart(selectedDate) : undefined
+  // Pour la vue family, calculer la plage de 7 jours à partir d'aujourd'hui
+  const today = new Date().toISOString().split('T')[0]
+  const endDate = new Date(today)
+  endDate.setDate(endDate.getDate() + 7)
+  const endDateStr = endDate.toISOString().split('T')[0]
 
-  // For family view, get all schedules for the selected date
+  const weekStart = view === 'week' ? getWeekStart(selectedDate) : undefined
+  const familyDateRange = view === 'family' ? { start: today, end: endDateStr } : undefined
+
+  // For family view, get all schedules for the next 7 days from today
   // For week view, get all schedules for the week
   // For personal view, get all schedules without date filter (filtered client-side)
   const schedules = await getSchedules(
     supabase,
     familyMemberIds,
-    view === 'family' ? selectedDate : undefined,
-    weekStart
+    view === 'family' ? undefined : (view === 'week' ? undefined : selectedDate),
+    weekStart,
+    familyDateRange
   )
 
   return (
