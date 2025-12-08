@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { Plus, Calendar as CalendarIcon, Clock, Settings } from 'lucide-react'
+import { Plus, Calendar as CalendarIcon, Clock, Settings, MapPin } from 'lucide-react'
 import { User } from '@supabase/supabase-js'
 import { CalendarSubscriptionManager } from './CalendarSubscriptionManager'
 
@@ -12,6 +12,7 @@ interface Schedule {
   family_member_id: string
   title: string
   description: string | null
+  location: string | null
   start_time: string
   end_time: string
   date: string
@@ -68,6 +69,7 @@ export function ScheduleManagement({
   const [formData, setFormData] = useState({
     title: '',
     description: '',
+    location: '',
     date: new Date().toISOString().split('T')[0],
     start_time: '09:00',
     end_time: '10:00',
@@ -172,6 +174,7 @@ export function ScheduleManagement({
           family_member_id: formData.family_member_id,
           title: formData.title,
           description: formData.description || null,
+          location: formData.location || null,
           date: formData.date,
           start_time: formData.start_time,
           end_time: formData.end_time,
@@ -213,6 +216,7 @@ export function ScheduleManagement({
       setFormData({
         title: '',
         description: '',
+        location: '',
         date: new Date().toISOString().split('T')[0],
         start_time: '09:00',
         end_time: '10:00',
@@ -549,6 +553,20 @@ export function ScheduleManagement({
               />
             </div>
 
+            <div>
+              <label htmlFor="location" className="block text-sm font-medium text-gray-700 mb-1">
+                Localisation (optionnel)
+              </label>
+              <input
+                id="location"
+                type="text"
+                value={formData.location}
+                onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                className="input"
+                placeholder="Adresse, lieu, etc."
+              />
+            </div>
+
             <div className="grid md:grid-cols-3 gap-4">
               <div>
                 <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-1">
@@ -684,6 +702,12 @@ export function ScheduleManagement({
                                   <Clock className="w-4 h-4" />
                                   {schedule.start_time} - {schedule.end_time}
                                 </span>
+                                {schedule.location && (
+                                  <span className="flex items-center gap-1">
+                                    <MapPin className="w-4 h-4" />
+                                    {schedule.location}
+                                  </span>
+                                )}
                               </div>
                               {schedule.description && (
                                 <p className="text-sm text-gray-600 mt-2">{schedule.description}</p>
@@ -767,6 +791,12 @@ export function ScheduleManagement({
                                 <Clock className="w-4 h-4" />
                                 {schedule.start_time} - {schedule.end_time}
                               </span>
+                              {schedule.location && (
+                                <span className="flex items-center gap-1">
+                                  <MapPin className="w-4 h-4" />
+                                  {schedule.location}
+                                </span>
+                              )}
                             </div>
                             {schedule.description && (
                               <p className="text-sm text-gray-600 mt-2">{schedule.description}</p>
@@ -878,7 +908,7 @@ export function ScheduleManagement({
                                             : 'bg-primary-500 text-white border-primary-700 hover:bg-primary-600'
                                     }`}
                                     style={isExternal && !hasOverlap && !hasBackToBack ? { backgroundColor: color || '#3B82F6' } : {}}
-                                    title={`${schedule.title} - ${schedule.start_time} à ${schedule.end_time}${hasOverlap ? ' (Conflit d\'horaire)' : hasBackToBack ? ' (Possibilité de problème de transport)' : ''}`}
+                                    title={`${schedule.title} - ${schedule.start_time} à ${schedule.end_time}${schedule.location ? ` - ${schedule.location}` : ''}${hasOverlap ? ' (Conflit d\'horaire)' : hasBackToBack ? ' (Possibilité de problème de transport)' : ''}`}
                                   >
                                     <div className="font-semibold truncate flex items-center gap-1">
                                       {hasOverlap && <span>⚠️</span>}
@@ -886,6 +916,12 @@ export function ScheduleManagement({
                                       {schedule.title}
                                     </div>
                                     <div className="truncate">{schedule.start_time} - {schedule.end_time}</div>
+                                    {schedule.location && (
+                                      <div className="text-xs opacity-75 flex items-center gap-1 mt-1">
+                                        <MapPin className="w-3 h-3" />
+                                        <span className="truncate">{schedule.location}</span>
+                                      </div>
+                                    )}
                                   </div>
                                 )
                               })}
