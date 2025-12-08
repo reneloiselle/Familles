@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { Plus, Calendar as CalendarIcon, Clock, Settings, MapPin } from 'lucide-react'
+import { Plus, Calendar as CalendarIcon, Clock, Settings, MapPin, X, Edit2, Trash2, ChevronLeft, ChevronRight, User as UserIcon } from 'lucide-react'
 import { User } from '@supabase/supabase-js'
 import { CalendarSubscriptionManager } from './CalendarSubscriptionManager'
 import { LocationPicker } from './LocationPicker'
@@ -62,8 +62,10 @@ export function ScheduleManagement({
   initialView,
 }: ScheduleManagementProps) {
   const [showForm, setShowForm] = useState(false)
+  const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null)
   const [showSubscriptions, setShowSubscriptions] = useState(false)
   const [showLocationPicker, setShowLocationPicker] = useState(false)
+  const [showEditLocationPicker, setShowEditLocationPicker] = useState(false)
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [selectedDate, setSelectedDate] = useState(initialDate)
   const [view, setView] = useState(initialView)
@@ -77,10 +79,31 @@ export function ScheduleManagement({
     end_time: '10:00',
     family_member_id: familyMember.id,
   })
+  const [editFormData, setEditFormData] = useState({
+    title: '',
+    description: '',
+    location: '',
+    date: '',
+    start_time: '',
+    end_time: '',
+    family_member_id: '',
+  })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const router = useRouter()
   const supabase = createClient()
+
+  // Empêcher le scroll du body quand une modale est ouverte
+  useEffect(() => {
+    if (showForm || editingScheduleId) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = 'unset'
+    }
+    return () => {
+      document.body.style.overflow = 'unset'
+    }
+  }, [showForm, editingScheduleId])
 
   // Synchroniser les horaires initiaux
   useEffect(() => {
@@ -215,6 +238,7 @@ export function ScheduleManagement({
       }
 
       setShowForm(false)
+      setShowLocationPicker(false)
       setFormData({
         title: '',
         description: '',
@@ -226,6 +250,92 @@ export function ScheduleManagement({
       })
     } catch (err: any) {
       setError(err.message || 'Erreur lors de la création de l\'horaire')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const startEditing = (schedule: Schedule) => {
+    setEditingScheduleId(schedule.id)
+    setEditFormData({
+      title: schedule.title,
+      description: schedule.description || '',
+      location: schedule.location || '',
+      date: schedule.date,
+      start_time: schedule.start_time,
+      end_time: schedule.end_time,
+      family_member_id: schedule.family_member_id,
+    })
+  }
+
+  const cancelEditing = () => {
+    setEditingScheduleId(null)
+    setEditFormData({
+      title: '',
+      description: '',
+      location: '',
+      date: '',
+      start_time: '',
+      end_time: '',
+      family_member_id: '',
+    })
+    setShowEditLocationPicker(false)
+  }
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editingScheduleId) return
+
+    setError('')
+    setLoading(true)
+
+    try {
+      const { error } = await supabase
+        .from('schedules')
+        .update({
+          title: editFormData.title,
+          description: editFormData.description || null,
+          location: editFormData.location || null,
+          date: editFormData.date,
+          start_time: editFormData.start_time,
+          end_time: editFormData.end_time,
+          family_member_id: editFormData.family_member_id,
+        })
+        .eq('id', editingScheduleId)
+
+      if (error) throw error
+
+      // Recharger les horaires localement selon la vue actuelle
+      const familyMemberIds = familyMembers.map(m => m.id)
+      let reloadQuery = supabase
+        .from('schedules')
+        .select('*, family_members(id, user_id, role, email, name, avatar_url)')
+        .in('family_member_id', familyMemberIds)
+
+      if (view === 'family') {
+        const today = new Date().toISOString().split('T')[0]
+        const endDate = new Date(today)
+        endDate.setDate(endDate.getDate() + 7)
+        const endDateStr = endDate.toISOString().split('T')[0]
+        reloadQuery = reloadQuery.gte('date', today).lte('date', endDateStr)
+      } else if (view === 'week') {
+        const weekStart = getWeekStart(selectedDate)
+        const weekEnd = new Date(weekStart)
+        weekEnd.setDate(weekEnd.getDate() + 6)
+        reloadQuery = reloadQuery.gte('date', weekStart).lte('date', weekEnd.toISOString().split('T')[0])
+      }
+
+      const { data: updatedSchedules } = await reloadQuery
+        .order('date', { ascending: true })
+        .order('start_time', { ascending: true })
+
+      if (updatedSchedules) {
+        setLocalSchedules(updatedSchedules)
+      }
+
+      cancelEditing()
+    } catch (err: any) {
+      setError(err.message || 'Erreur lors de la modification de l\'horaire')
     } finally {
       setLoading(false)
     }
@@ -371,53 +481,63 @@ export function ScheduleManagement({
         </div>
       )}
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-4">
         {isParent && (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-1.5 sm:gap-2">
             <button
               onClick={() => {
                 setView('personal')
                 router.push(`/dashboard/schedule?view=personal`)
               }}
-              className={`btn ${view === 'personal' ? 'btn-primary' : 'btn-secondary'}`}
+              className={`btn btn-sm ${view === 'personal' ? 'btn-primary' : 'btn-secondary'} flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm`}
             >
-              Mon agenda
+              <UserIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">Mon agenda</span>
+              <span className="sm:hidden">Moi</span>
             </button>
             <button
               onClick={() => {
                 setView('family')
                 router.push(`/dashboard/schedule?view=family&date=${selectedDate}`)
               }}
-              className={`btn ${view === 'family' ? 'btn-primary' : 'btn-secondary'}`}
+              className={`btn btn-sm ${view === 'family' ? 'btn-primary' : 'btn-secondary'} flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm`}
             >
-              Vue famille complète
+              <CalendarIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">Vue famille</span>
+              <span className="sm:hidden">Famille</span>
             </button>
             <button
               onClick={() => {
                 setView('week')
                 router.push(`/dashboard/schedule?view=week&date=${selectedDate}`)
               }}
-              className={`btn ${view === 'week' ? 'btn-primary' : 'btn-secondary'}`}
+              className={`btn btn-sm ${view === 'week' ? 'btn-primary' : 'btn-secondary'} flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm`}
             >
-              Vue semaine
+              <CalendarIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">Vue semaine</span>
+              <span className="sm:hidden">Semaine</span>
             </button>
           </div>
         )}
 
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="btn btn-primary flex items-center gap-2"
-        >
-          <Plus className="w-5 h-5" />
-          Ajouter un horaire
-        </button>
-        <button
-          onClick={() => setShowSubscriptions(!showSubscriptions)}
-          className="btn btn-secondary flex items-center gap-2"
-          title="Gérer les calendriers externes"
-        >
-          <Settings className="w-5 h-5" />
-        </button>
+        <div className="flex gap-1.5 sm:gap-2">
+          <button
+            onClick={() => setShowForm(true)}
+            className="btn btn-sm btn-primary flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm"
+          >
+            <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">Ajouter horaire</span>
+            <span className="sm:hidden">Ajouter</span>
+          </button>
+          <button
+            onClick={() => setShowSubscriptions(!showSubscriptions)}
+            className="btn btn-sm btn-secondary flex items-center justify-center p-1.5 sm:px-3 sm:py-1.5"
+            title="Gérer les calendriers externes"
+          >
+            <Settings className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline ml-1.5">Calendriers</span>
+          </button>
+        </div>
       </div>
 
       {showSubscriptions && (
@@ -497,10 +617,37 @@ export function ScheduleManagement({
         </div>
       )}
 
+      {/* Modale de création */}
       {showForm && (
-        <div className="card">
-          <h2 className="text-xl font-semibold mb-4">Nouvel horaire</h2>
-          <form onSubmit={handleSubmit} className="space-y-4">
+        <>
+          <div
+            className="fixed inset-0 bg-black/50 z-50 transition-opacity duration-300"
+            onClick={() => {
+              setShowForm(false)
+              setShowLocationPicker(false)
+            }}
+            aria-hidden="true"
+          />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-in fade-in slide-in-from-bottom-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-2xl font-semibold">Nouvel horaire</h2>
+                  <button
+                    onClick={() => {
+                      setShowForm(false)
+                      setShowLocationPicker(false)
+                    }}
+                    className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                    aria-label="Fermer"
+                  >
+                    <X className="w-5 h-5 text-gray-600" />
+                  </button>
+                </div>
+                <form onSubmit={handleSubmit} className="space-y-4">
             {isParent && (
               <div>
                 <label htmlFor="member" className="block text-sm font-medium text-gray-700 mb-1">
@@ -531,15 +678,16 @@ export function ScheduleManagement({
               <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-1">
                 Titre
               </label>
-              <input
-                id="title"
-                type="text"
-                value={formData.title}
-                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                required
-                className="input"
-                placeholder="École, Sport, etc."
-              />
+                        <input
+                          id="title"
+                          type="text"
+                          value={formData.title}
+                          onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                          required
+                          className="input"
+                          placeholder="École, Sport, etc."
+                          autoFocus
+                        />
             </div>
 
             <div>
@@ -571,10 +719,10 @@ export function ScheduleManagement({
                 <button
                   type="button"
                   onClick={() => setShowLocationPicker(!showLocationPicker)}
-                  className="btn btn-secondary flex items-center gap-2"
+                  className="btn btn-sm btn-secondary flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm"
                 >
-                  <MapPin className="w-4 h-4" />
-                  {showLocationPicker ? 'Masquer' : 'Carte'}
+                  <MapPin className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">{showLocationPicker ? 'Masquer' : 'Carte'}</span>
                 </button>
               </div>
               {showLocationPicker && (
@@ -632,30 +780,225 @@ export function ScheduleManagement({
               </div>
             </div>
 
-            <div className="flex gap-2">
-              <button type="submit" disabled={loading} className="btn btn-primary">
-                {loading ? 'Création...' : 'Créer l\'horaire'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowForm(false)}
-                className="btn btn-secondary"
-              >
-                Annuler
-              </button>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <button type="submit" disabled={loading} className="btn btn-sm sm:btn-primary flex items-center justify-center gap-2 px-4 py-2 text-sm">
+                      {loading ? 'Création...' : (
+                        <>
+                          <Plus className="w-4 h-4" />
+                          Créer l'horaire
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowForm(false)
+                        setShowLocationPicker(false)
+                      }}
+                      className="btn btn-sm btn-secondary px-4 py-2 text-sm"
+                    >
+                      Annuler
+                    </button>
+                  </div>
+                </form>
+              </div>
             </div>
-          </form>
-        </div>
+          </div>
+        </>
+      )}
+
+      {/* Modale d'édition */}
+      {editingScheduleId && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/50 z-50 transition-opacity duration-300"
+            onClick={cancelEditing}
+            aria-hidden="true"
+          />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-in fade-in slide-in-from-bottom-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-2xl font-semibold">Modifier l'horaire</h2>
+                  <button
+                    onClick={cancelEditing}
+                    className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                    aria-label="Fermer"
+                    disabled={loading}
+                  >
+                    <X className="w-5 h-5 text-gray-600" />
+                  </button>
+                </div>
+                {(() => {
+                  const schedule = localSchedules.find(s => s.id === editingScheduleId)
+                  if (!schedule) return null
+
+                  return (
+                    <form onSubmit={handleEditSubmit} className="space-y-4">
+                      {isParent && (
+                        <div>
+                          <label htmlFor="edit-member" className="block text-sm font-medium text-gray-700 mb-1">
+                            Membre
+                          </label>
+                          <select
+                            id="edit-member"
+                            value={editFormData.family_member_id}
+                            onChange={(e) => setEditFormData({ ...editFormData, family_member_id: e.target.value })}
+                            className="input"
+                          >
+                            {familyMembers.map((member) => (
+                              <option key={member.id} value={member.id}>
+                                {member.user_id === user.id
+                                  ? 'Vous'
+                                  : member.name
+                                    ? member.name
+                                    : member.email
+                                      ? member.email
+                                      : `Membre ${member.id.slice(0, 8)}`}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      <div>
+                        <label htmlFor="edit-title" className="block text-sm font-medium text-gray-700 mb-1">
+                          Titre
+                        </label>
+                        <input
+                          id="edit-title"
+                          type="text"
+                          value={editFormData.title}
+                          onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
+                          required
+                          className="input"
+                          placeholder="École, Sport, etc."
+                          autoFocus
+                        />
+                      </div>
+
+                      <div>
+                        <label htmlFor="edit-description" className="block text-sm font-medium text-gray-700 mb-1">
+                          Description (optionnel)
+                        </label>
+                        <textarea
+                          id="edit-description"
+                          value={editFormData.description}
+                          onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
+                          className="input"
+                          rows={3}
+                        />
+                      </div>
+
+                      <div>
+                        <label htmlFor="edit-location" className="block text-sm font-medium text-gray-700 mb-1">
+                          Localisation (optionnel)
+                        </label>
+                        <div className="flex gap-2">
+                          <input
+                            id="edit-location"
+                            type="text"
+                            value={editFormData.location}
+                            onChange={(e) => setEditFormData({ ...editFormData, location: e.target.value })}
+                            className="input flex-1"
+                            placeholder="Adresse, lieu, etc."
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowEditLocationPicker(!showEditLocationPicker)}
+                            className="btn btn-sm btn-secondary flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm"
+                          >
+                            <MapPin className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                            <span className="hidden xs:inline">{showEditLocationPicker ? 'Masquer' : 'Carte'}</span>
+                          </button>
+                        </div>
+                        {showEditLocationPicker && (
+                          <div className="mt-3 p-4 border border-gray-300 rounded-lg bg-white">
+                            <LocationPicker
+                              value={editFormData.location}
+                              onChange={(address) => {
+                                setEditFormData({ ...editFormData, location: address })
+                              }}
+                              onClose={() => setShowEditLocationPicker(false)}
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="grid md:grid-cols-3 gap-4">
+                        <div>
+                          <label htmlFor="edit-date" className="block text-sm font-medium text-gray-700 mb-1">
+                            Date
+                          </label>
+                          <input
+                            id="edit-date"
+                            type="date"
+                            value={editFormData.date}
+                            onChange={(e) => setEditFormData({ ...editFormData, date: e.target.value })}
+                            required
+                            className="input"
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="edit-start_time" className="block text-sm font-medium text-gray-700 mb-1">
+                            Heure de début
+                          </label>
+                          <input
+                            id="edit-start_time"
+                            type="time"
+                            value={editFormData.start_time}
+                            onChange={(e) => setEditFormData({ ...editFormData, start_time: e.target.value })}
+                            required
+                            className="input"
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="edit-end_time" className="block text-sm font-medium text-gray-700 mb-1">
+                            Heure de fin
+                          </label>
+                          <input
+                            id="edit-end_time"
+                            type="time"
+                            value={editFormData.end_time}
+                            onChange={(e) => setEditFormData({ ...editFormData, end_time: e.target.value })}
+                            required
+                            className="input"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <button type="submit" disabled={loading} className="btn btn-sm sm:btn-primary flex items-center justify-center gap-2 px-4 py-2 text-sm">
+                          {loading ? 'Modification...' : (
+                            <>
+                              <Edit2 className="w-4 h-4" />
+                              Enregistrer
+                            </>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelEditing}
+                          className="btn btn-sm btn-secondary px-4 py-2 text-sm"
+                          disabled={loading}
+                        >
+                          Annuler
+                        </button>
+                      </div>
+                    </form>
+                  )
+                })()}
+              </div>
+            </div>
+          </div>
+        </>
       )}
 
       {view === 'family' && (
         <div className="space-y-6">
-          <div className="card">
-            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-              <CalendarIcon className="w-5 h-5" />
-              Agenda de la famille - 7 prochains jours
-            </h2>
-          </div>
 
           {filteredSchedules.length === 0 ? (
             <div className="card text-center py-12">
@@ -725,25 +1068,35 @@ export function ScheduleManagement({
                                   <Clock className="w-4 h-4" />
                                   {schedule.start_time} - {schedule.end_time}
                                 </span>
-                                {schedule.location && (
-                                  <span className="flex items-center gap-1">
-                                    <MapPin className="w-4 h-4" />
-                                    {schedule.location}
-                                  </span>
-                                )}
                               </div>
                               {schedule.description && (
                                 <p className="text-sm text-gray-600 mt-2">{schedule.description}</p>
                               )}
+                              {schedule.location && (
+                                <p className="text-sm text-gray-600 mt-2 flex items-center gap-1">
+                                  <MapPin className="w-4 h-4" />
+                                  {schedule.location}
+                                </p>
+                              )}
                             </div>
                             {(!isExternal && (isParent || schedule.family_members?.user_id === user.id)) && (
-                              <button
-                                onClick={() => deleteSchedule(schedule.id)}
-                                className="text-red-600 hover:text-red-800 text-sm p-2 rounded-lg hover:bg-red-50 transition-colors"
-                                title="Supprimer"
-                              >
-                                Supprimer
-                              </button>
+                              <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+                                <button
+                                  onClick={() => startEditing(schedule)}
+                                  className="text-blue-600 hover:text-blue-800 p-1.5 sm:p-2 rounded-lg hover:bg-blue-50 transition-colors"
+                                  title="Modifier"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                </button>
+                                <button
+                                  onClick={() => deleteSchedule(schedule.id)}
+                                  className="text-red-600 hover:text-red-800 p-1.5 sm:p-2 rounded-lg hover:bg-red-50 transition-colors flex items-center gap-1"
+                                  title="Supprimer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                  <span className="hidden sm:inline text-xs sm:text-sm">Supprimer</span>
+                                </button>
+                              </div>
                             )}
                           </div>
                         </div>
@@ -814,24 +1167,34 @@ export function ScheduleManagement({
                                 <Clock className="w-4 h-4" />
                                 {schedule.start_time} - {schedule.end_time}
                               </span>
-                              {schedule.location && (
-                                <span className="flex items-center gap-1">
-                                  <MapPin className="w-4 h-4" />
-                                  {schedule.location}
-                                </span>
-                              )}
                             </div>
                             {schedule.description && (
                               <p className="text-sm text-gray-600 mt-2">{schedule.description}</p>
                             )}
+                            {schedule.location && (
+                              <p className="text-sm text-gray-600 mt-2 flex items-center gap-1">
+                                <MapPin className="w-4 h-4" />
+                                {schedule.location}
+                              </p>
+                            )}
                           </div>
-                          <button
-                            onClick={() => deleteSchedule(schedule.id)}
-                            className="text-red-600 hover:text-red-800 text-sm p-2 rounded-lg hover:bg-red-50 transition-colors"
-                            title="Supprimer"
-                          >
-                            Supprimer
-                          </button>
+                          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+                            <button
+                              onClick={() => startEditing(schedule)}
+                              className="text-blue-600 hover:text-blue-800 p-1.5 sm:p-2 rounded-lg hover:bg-blue-50 transition-colors"
+                              title="Modifier"
+                            >
+                              <Edit2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                            </button>
+                            <button
+                              onClick={() => deleteSchedule(schedule.id)}
+                              className="text-red-600 hover:text-red-800 p-1.5 sm:p-2 rounded-lg hover:bg-red-50 transition-colors flex items-center gap-1"
+                              title="Supprimer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                              <span className="hidden sm:inline text-xs sm:text-sm">Supprimer</span>
+                            </button>
+                          </div>
                         </div>
                       </div>
                       )

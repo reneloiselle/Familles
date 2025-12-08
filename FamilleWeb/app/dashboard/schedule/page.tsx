@@ -117,11 +117,6 @@ export default async function SchedulePage({
     <div className="max-w-6xl mx-auto">
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-2">Gestion des horaires</h1>
-        <p className="text-gray-600">
-          {familyMember.role === 'parent'
-            ? 'Vue complète de la famille - Visualisez tous les horaires'
-            : 'Votre agenda personnel'}
-        </p>
       </div>
 
       <ScheduleManagement
