@@ -57,7 +57,6 @@ class _ScheduleScreenContent extends StatefulWidget {
 }
 
 class _ScheduleScreenContentState extends State<_ScheduleScreenContent> {
-  bool _showForm = false;
 
   @override
   void initState() {
@@ -82,6 +81,11 @@ class _ScheduleScreenContentState extends State<_ScheduleScreenContent> {
       // Calculer le lundi de la semaine
       final monday = selectedDate.subtract(Duration(days: selectedDate.weekday - 1));
       weekStart = DateTime(monday.year, monday.month, monday.day);
+    } else if (view == 'calendar') {
+      // Pour la vue calendrier, afficher les 7 prochains jours à partir d'aujourd'hui
+      final today = DateTime.now();
+      dateRangeStart = DateTime(today.year, today.month, today.day);
+      dateRangeEnd = dateRangeStart.add(const Duration(days: 7));
     } else if (view == 'family') {
       // Pour la vue famille, afficher les 7 prochains jours à partir d'aujourd'hui
       final today = DateTime.now();
@@ -106,16 +110,16 @@ class _ScheduleScreenContentState extends State<_ScheduleScreenContent> {
         title: const Text('Horaires'),
         actions: [
           IconButton(
-            icon: Icon(_showForm ? Icons.close : Icons.add),
-            onPressed: () => setState(() => _showForm = !_showForm),
+            icon: const Icon(Icons.add),
+            onPressed: () => _showScheduleModal(context),
           ),
         ],
       ),
       body: Consumer<ScheduleProvider>(
         builder: (context, provider, _) {
-          // Pour les vues avec calendrier (family et week), on utilise une structure avec Expanded
-          // Pour la vue personal, on utilise un SingleChildScrollView
-          final isCalendarView = provider.view == 'family' || provider.view == 'week';
+          // Pour les vues avec calendrier (calendar et week), on utilise une structure avec Expanded
+          // Pour les vues personal et family, on utilise un SingleChildScrollView
+          final isCalendarView = provider.view == 'calendar' || provider.view == 'week';
           
           return RefreshIndicator(
             onRefresh: () async => _loadSchedules(),
@@ -154,10 +158,19 @@ class _ScheduleScreenContentState extends State<_ScheduleScreenContent> {
                                 ),
                                 const SizedBox(width: 8),
                                 _ViewChip(
-                                  label: 'Vue famille',
+                                  label: 'Familles',
                                   isSelected: provider.view == 'family',
                                   onTap: () {
                                     provider.setView('family');
+                                    _loadSchedules();
+                                  },
+                                ),
+                                const SizedBox(width: 8),
+                                _ViewChip(
+                                  label: 'Calendrier',
+                                  isSelected: provider.view == 'calendar',
+                                  onTap: () {
+                                    provider.setView('calendar');
                                     _loadSchedules();
                                   },
                                 ),
@@ -175,20 +188,6 @@ class _ScheduleScreenContentState extends State<_ScheduleScreenContent> {
                           ),
                           const SizedBox(height: 16),
                         ],
-                        if (_showForm) ...[
-                          _CreateScheduleForm(
-                            familyId: widget.familyId,
-                            familyMember: widget.familyMember,
-                            familyMembers: widget.familyMembers,
-                            isParent: widget.isParent,
-                            onCancel: () => setState(() => _showForm = false),
-                            onSuccess: () {
-                              setState(() => _showForm = false);
-                              _loadSchedules();
-                            },
-                          ),
-                          const SizedBox(height: 16),
-                        ],
                         if (provider.isLoading && provider.schedules.isEmpty)
                           const Expanded(
                             child: Center(
@@ -202,7 +201,7 @@ class _ScheduleScreenContentState extends State<_ScheduleScreenContent> {
                               familyMembers: widget.familyMembers,
                               selectedDate: provider.selectedDate,
                               currentUserId: context.read<AuthProvider>().user?.id,
-                              calendarView: provider.view == 'family' 
+                              calendarView: provider.view == 'calendar' 
                                   ? CalendarView.workWeek
                                   : CalendarView.week,
                               onAppointmentTap: (schedule) {
@@ -261,10 +260,19 @@ class _ScheduleScreenContentState extends State<_ScheduleScreenContent> {
                           ),
                           const SizedBox(width: 8),
                           _ViewChip(
-                            label: 'Vue famille',
+                            label: 'Familles',
                             isSelected: provider.view == 'family',
                             onTap: () {
                               provider.setView('family');
+                              _loadSchedules();
+                            },
+                          ),
+                          const SizedBox(width: 8),
+                          _ViewChip(
+                            label: 'Calendrier',
+                            isSelected: provider.view == 'calendar',
+                            onTap: () {
+                              provider.setView('calendar');
                               _loadSchedules();
                             },
                           ),
@@ -283,8 +291,8 @@ class _ScheduleScreenContentState extends State<_ScheduleScreenContent> {
                     const SizedBox(height: 16),
                   ],
 
-                  // Sélecteur de date (pour les vues famille et semaine)
-                  if (provider.view == 'family' || provider.view == 'week') ...[
+                  // Sélecteur de date (pour les vues calendrier et semaine)
+                  if (provider.view == 'calendar' || provider.view == 'week') ...[
                     Row(
                       children: [
                         Expanded(
@@ -365,23 +373,8 @@ class _ScheduleScreenContentState extends State<_ScheduleScreenContent> {
                     const SizedBox(height: 16),
                   ],
 
-                  // Formulaire de création
-                  if (_showForm) ...[
-                    _CreateScheduleForm(
-                      familyId: widget.familyId,
-                      familyMember: widget.familyMember,
-                      familyMembers: widget.familyMembers,
-                      isParent: widget.isParent,
-                      onCancel: () => setState(() => _showForm = false),
-                      onSuccess: () {
-                        setState(() => _showForm = false);
-                        _loadSchedules();
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                  ],
 
-                  // Contenu selon la vue (uniquement pour la vue personal dans le SingleChildScrollView)
+                  // Contenu selon la vue (pour les vues personal et family dans le SingleChildScrollView)
                   if (provider.isLoading && provider.schedules.isEmpty)
                     const Center(
                       child: Padding(
@@ -394,7 +387,10 @@ class _ScheduleScreenContentState extends State<_ScheduleScreenContent> {
                       schedules: provider.schedules,
                       currentUserId: context.read<AuthProvider>().user?.id,
                       onDelete: (id) => _deleteSchedule(context, provider, id),
+                      onEdit: (schedule) => _showScheduleModal(context, schedule: schedule),
                       provider: provider,
+                      showMemberName: provider.view == 'family',
+                      familyMembers: widget.familyMembers,
                     ),
                 ],
               ),
@@ -462,6 +458,8 @@ class _ScheduleScreenContentState extends State<_ScheduleScreenContent> {
       memberName = member.email!;
     }
 
+    final canEdit = widget.isParent || schedule.familyMemberId == widget.familyMember.id;
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -492,11 +490,47 @@ class _ScheduleScreenContentState extends State<_ScheduleScreenContent> {
           ],
         ),
         actions: [
+          if (canEdit)
+            TextButton.icon(
+              onPressed: () {
+                Navigator.pop(context);
+                _showScheduleModal(context, schedule: schedule);
+              },
+              icon: const Icon(Icons.edit),
+              label: const Text('Modifier'),
+            ),
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Fermer'),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showScheduleModal(BuildContext context, {Schedule? schedule}) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (modalContext) => ChangeNotifierProvider.value(
+        value: context.read<ScheduleProvider>(),
+        child: Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(modalContext).viewInsets.bottom,
+          ),
+          child: _ScheduleModal(
+            schedule: schedule,
+            familyId: widget.familyId,
+            familyMember: widget.familyMember,
+            familyMembers: widget.familyMembers,
+            isParent: widget.isParent,
+            onSuccess: () {
+              Navigator.pop(modalContext);
+              _loadSchedules();
+            },
+          ),
+        ),
       ),
     );
   }
@@ -521,6 +555,327 @@ class _ViewChip extends StatelessWidget {
       onSelected: (_) => onTap(),
       selectedColor: Theme.of(context).colorScheme.primaryContainer,
       checkmarkColor: Theme.of(context).colorScheme.onPrimaryContainer,
+    );
+  }
+}
+
+class _ScheduleModal extends StatefulWidget {
+  final Schedule? schedule;
+  final String familyId;
+  final FamilyMember familyMember;
+  final List<FamilyMember> familyMembers;
+  final bool isParent;
+  final VoidCallback onSuccess;
+
+  const _ScheduleModal({
+    this.schedule,
+    required this.familyId,
+    required this.familyMember,
+    required this.familyMembers,
+    required this.isParent,
+    required this.onSuccess,
+  });
+
+  @override
+  State<_ScheduleModal> createState() => _ScheduleModalState();
+}
+
+class _ScheduleModalState extends State<_ScheduleModal> {
+  final _formKey = GlobalKey<FormState>();
+  final _titleController = TextEditingController();
+  final _descriptionController = TextEditingController();
+  final _locationController = TextEditingController();
+  String? _selectedMemberId;
+  DateTime _selectedDate = DateTime.now();
+  TimeOfDay _startTime = const TimeOfDay(hour: 9, minute: 0);
+  TimeOfDay _endTime = const TimeOfDay(hour: 10, minute: 0);
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.schedule != null) {
+      // Mode édition
+      _titleController.text = widget.schedule!.title;
+      _descriptionController.text = widget.schedule!.description ?? '';
+      _locationController.text = widget.schedule!.location ?? '';
+      _selectedMemberId = widget.schedule!.familyMemberId;
+      _selectedDate = widget.schedule!.dateTime;
+      final startParts = widget.schedule!.startTime.split(':');
+      _startTime = TimeOfDay(
+        hour: int.parse(startParts[0]),
+        minute: int.parse(startParts[1]),
+      );
+      final endParts = widget.schedule!.endTime.split(':');
+      _endTime = TimeOfDay(
+        hour: int.parse(endParts[0]),
+        minute: int.parse(endParts[1]),
+      );
+    } else {
+      // Mode création
+      _selectedMemberId = widget.familyMember.id;
+    }
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    _locationController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveSchedule() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      final provider = context.read<ScheduleProvider>();
+      
+      if (widget.schedule != null) {
+        // Mode édition
+        await provider.updateSchedule(
+          scheduleId: widget.schedule!.id,
+          title: _titleController.text.trim(),
+          description: _descriptionController.text.trim().isEmpty
+              ? null
+              : _descriptionController.text.trim(),
+          date: _selectedDate.toIso8601String().split('T')[0],
+          startTime: '${_startTime.hour.toString().padLeft(2, '0')}:${_startTime.minute.toString().padLeft(2, '0')}',
+          endTime: '${_endTime.hour.toString().padLeft(2, '0')}:${_endTime.minute.toString().padLeft(2, '0')}',
+          location: _locationController.text.trim().isEmpty ? null : _locationController.text.trim(),
+        );
+
+        if (mounted) {
+          widget.onSuccess();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Horaire modifié avec succès')),
+          );
+        }
+      } else {
+        // Mode création
+        await provider.createSchedule(
+          familyMemberId: _selectedMemberId!,
+          title: _titleController.text.trim(),
+          description: _descriptionController.text.trim().isEmpty
+              ? null
+              : _descriptionController.text.trim(),
+          date: _selectedDate.toIso8601String().split('T')[0],
+          startTime: '${_startTime.hour.toString().padLeft(2, '0')}:${_startTime.minute.toString().padLeft(2, '0')}',
+          endTime: '${_endTime.hour.toString().padLeft(2, '0')}:${_endTime.minute.toString().padLeft(2, '0')}',
+          location: _locationController.text.trim().isEmpty ? null : _locationController.text.trim(),
+        );
+
+        if (mounted) {
+          widget.onSuccess();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Horaire créé avec succès')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur: ${e.toString()}')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _selectDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+      locale: const Locale('fr', 'FR'),
+    );
+    if (picked != null) {
+      setState(() => _selectedDate = picked);
+    }
+  }
+
+  Future<void> _selectStartTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _startTime,
+    );
+    if (picked != null) {
+      setState(() => _startTime = picked);
+    }
+  }
+
+  Future<void> _selectEndTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _endTime,
+    );
+    if (picked != null) {
+      setState(() => _endTime = picked);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final authProvider = context.read<AuthProvider>();
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+        left: 16,
+        right: 16,
+        top: 16,
+      ),
+      child: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    widget.schedule != null ? 'Modifier l\'horaire' : 'Nouvel horaire',
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              if (widget.isParent)
+                DropdownButtonFormField<String>(
+                  value: _selectedMemberId,
+                  decoration: const InputDecoration(
+                    labelText: 'Membre',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: widget.familyMembers.map((member) {
+                    final isCurrentUser = member.userId == authProvider.user?.id;
+                    return DropdownMenuItem(
+                      value: member.id,
+                      child: Text(isCurrentUser
+                          ? 'Vous'
+                          : member.name ?? member.email ?? 'Membre ${member.id.substring(0, 8)}'),
+                    );
+                  }).toList(),
+                  onChanged: (value) => setState(() => _selectedMemberId = value),
+                ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _titleController,
+                decoration: const InputDecoration(
+                  labelText: 'Titre *',
+                  border: OutlineInputBorder(),
+                  hintText: 'École, Sport, etc.',
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Veuillez entrer un titre';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _descriptionController,
+                decoration: const InputDecoration(
+                  labelText: 'Description (optionnel)',
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: 3,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _locationController,
+                decoration: const InputDecoration(
+                  labelText: 'Localisation (optionnel)',
+                  border: OutlineInputBorder(),
+                  hintText: 'Adresse, lieu, etc.',
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _selectDate,
+                      icon: const Icon(Icons.calendar_today),
+                      label: Text(DateFormat('dd/MM/yyyy').format(_selectedDate)),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _selectStartTime,
+                      icon: const Icon(Icons.access_time),
+                      label: Text(_startTime.format(context)),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _selectEndTime,
+                      icon: const Icon(Icons.access_time),
+                      label: Text(_endTime.format(context)),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _isLoading ? null : _saveSchedule,
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                      child: _isLoading
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Text(widget.schedule != null ? 'Enregistrer' : 'Créer'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                    child: const Text('Annuler'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -788,13 +1143,19 @@ class _PersonalView extends StatelessWidget {
   final List<Schedule> schedules;
   final String? currentUserId;
   final Function(String) onDelete;
+  final Function(Schedule) onEdit;
   final ScheduleProvider? provider;
+  final bool showMemberName;
+  final List<FamilyMember>? familyMembers;
 
   const _PersonalView({
     required this.schedules,
     required this.currentUserId,
     required this.onDelete,
+    required this.onEdit,
     this.provider,
+    this.showMemberName = false,
+    this.familyMembers,
   });
 
   @override
@@ -808,7 +1169,9 @@ class _PersonalView extends StatelessWidget {
               Icon(Icons.calendar_today, size: 64, color: Colors.grey[400]),
               const SizedBox(height: 16),
               Text(
-                'Aucun horaire dans votre agenda',
+                showMemberName 
+                    ? 'Aucun horaire dans l\'agenda de la famille'
+                    : 'Aucun horaire dans votre agenda',
                 style: TextStyle(color: Colors.grey[600]),
               ),
             ],
@@ -838,7 +1201,10 @@ class _PersonalView extends StatelessWidget {
                 date: entry.key,
                 schedules: entry.value,
                 onDelete: onDelete,
+                onEdit: onEdit,
                 provider: provider,
+                showMemberName: showMemberName,
+                familyMembers: familyMembers,
               ))
           .toList(),
     );
@@ -849,13 +1215,19 @@ class _DayScheduleCard extends StatelessWidget {
   final String date;
   final List<Schedule> schedules;
   final Function(String) onDelete;
+  final Function(Schedule) onEdit;
   final ScheduleProvider? provider;
+  final bool showMemberName;
+  final List<FamilyMember>? familyMembers;
 
   const _DayScheduleCard({
     required this.date,
     required this.schedules,
     required this.onDelete,
+    required this.onEdit,
     this.provider,
+    this.showMemberName = false,
+    this.familyMembers,
   });
 
   @override
@@ -874,22 +1246,40 @@ class _DayScheduleCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             ...schedules.map((schedule) {
+              // Pour détecter les conflits et transports, on ne compare que les horaires du même membre
+              final sameMemberSchedules = schedules.where((s) => s.familyMemberId == schedule.familyMemberId).toList();
               final overlappingIds = provider != null
-                  ? provider!.getOverlappingScheduleIds(schedule, schedules)
+                  ? provider!.getOverlappingScheduleIds(schedule, sameMemberSchedules)
                   : <String>[];
               final hasOverlap = overlappingIds.isNotEmpty;
               final backToBackIds = provider != null
-                  ? provider!.getBackToBackScheduleIds(schedule, schedules)
+                  ? provider!.getBackToBackScheduleIds(schedule, sameMemberSchedules)
                   : <String>[];
               final hasBackToBack = backToBackIds.isNotEmpty && !hasOverlap;
+
+              String? memberName;
+              if (showMemberName && familyMembers != null && familyMembers!.isNotEmpty) {
+                final member = familyMembers!.firstWhere(
+                  (m) => m.id == schedule.familyMemberId,
+                  orElse: () => familyMembers!.first,
+                );
+                if (member.name != null) {
+                  memberName = member.name!;
+                } else if (member.email != null) {
+                  memberName = member.email!;
+                } else {
+                  memberName = 'Membre ${member.id.substring(0, 8)}';
+                }
+              }
 
               return Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: _ScheduleCard(
                   schedule: schedule,
-                  memberName: null,
+                  memberName: memberName,
                   canDelete: true,
                   onDelete: () => onDelete(schedule.id),
+                  onEdit: () => onEdit(schedule),
                   hasOverlap: hasOverlap,
                   hasBackToBack: hasBackToBack,
                 ),
@@ -907,6 +1297,7 @@ class _ScheduleCard extends StatelessWidget {
   final String? memberName;
   final bool canDelete;
   final VoidCallback onDelete;
+  final VoidCallback? onEdit;
   final bool hasOverlap;
   final bool hasBackToBack;
 
@@ -915,6 +1306,7 @@ class _ScheduleCard extends StatelessWidget {
     this.memberName,
     required this.canDelete,
     required this.onDelete,
+    this.onEdit,
     this.hasOverlap = false,
     this.hasBackToBack = false,
   });
@@ -993,9 +1385,12 @@ class _ScheduleCard extends StatelessWidget {
                   children: [
                     Icon(Icons.access_time, size: 14, color: Colors.grey[600]),
                     const SizedBox(width: 4),
-                    Text(
-                      '${schedule.startTime} - ${schedule.endTime}',
-                      style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                    Flexible(
+                      child: Text(
+                        '${schedule.startTime} - ${schedule.endTime}',
+                        style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ],
                 ),
@@ -1004,6 +1399,8 @@ class _ScheduleCard extends StatelessWidget {
                   Text(
                     schedule.description!,
                     style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 2,
                   ),
                 ],
                 if (schedule.location != null) ...[
@@ -1024,12 +1421,23 @@ class _ScheduleCard extends StatelessWidget {
               ],
             ),
           ),
-          if (canDelete)
-            IconButton(
-              icon: const Icon(Icons.delete, color: Colors.red),
-              onPressed: onDelete,
-              tooltip: 'Supprimer',
-            ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (onEdit != null)
+                IconButton(
+                  icon: const Icon(Icons.edit, color: Colors.blue),
+                  onPressed: onEdit,
+                  tooltip: 'Modifier',
+                ),
+              if (canDelete)
+                IconButton(
+                  icon: const Icon(Icons.delete, color: Colors.red),
+                  onPressed: onDelete,
+                  tooltip: 'Supprimer',
+                ),
+            ],
+          ),
         ],
       ),
     );

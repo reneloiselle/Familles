@@ -6,7 +6,7 @@ import '../services/supabase_service.dart';
 /// Provider pour la gestion des horaires
 class ScheduleProvider with ChangeNotifier {
   List<Schedule> _schedules = [];
-  String _view = 'personal'; // 'personal', 'family', 'week'
+  String _view = 'personal'; // 'personal', 'family', 'calendar', 'week'
   DateTime _selectedDate = DateTime.now();
   bool _isLoading = false;
   String? _error;
