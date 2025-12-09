@@ -4,7 +4,6 @@ import '../../services/openai_service.dart';
 import '../../services/audio_service.dart';
 import '../../services/speech_service.dart';
 import '../../services/supabase_service.dart';
-import 'openai_config_screen.dart';
 import 'dart:io';
 
 class ChatScreen extends StatefulWidget {
@@ -73,9 +72,12 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _checkApiKey() async {
-    final hasKey = await OpenAIService.hasApiKey();
+    // Plus besoin de vérifier la clé API côté client, elle est gérée côté serveur
+    // Vérifier seulement que l'utilisateur est connecté
+    final supabase = SupabaseService.client;
+    final session = supabase.auth.currentSession;
     setState(() {
-      _hasApiKey = hasKey;
+      _hasApiKey = session != null;
     });
   }
 
@@ -146,7 +148,12 @@ class _ChatScreenState extends State<ChatScreen> {
     if (message.isEmpty || _isLoading) return;
 
     if (!_hasApiKey) {
-      _showConfigDialog();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vous devez être connecté pour utiliser le chat'),
+          backgroundColor: Colors.orange,
+        ),
+      );
       return;
     }
 
@@ -244,19 +251,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 content: Text(errorMessage),
                 backgroundColor: Colors.orange,
                 duration: const Duration(seconds: 5),
-                action: isAuthError
-                    ? SnackBarAction(
-                        label: 'Paramètres',
-                        textColor: Colors.white,
-                        onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => const OpenAIConfigScreen(),
-                            ),
-                          ).then((_) => _checkApiKey());
-                        },
-                      )
-                    : null,
+                action: null,
               ),
             );
           }
@@ -395,35 +390,6 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  void _showConfigDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Clé API requise'),
-        content: const Text(
-          'Vous devez configurer votre clé API OpenAI pour utiliser le chat. '
-          'Souhaitez-vous accéder aux paramètres maintenant ?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Annuler'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => const OpenAIConfigScreen(),
-                ),
-              ).then((_) => _checkApiKey());
-            },
-            child: const Text('Configurer'),
-          ),
-        ],
-      ),
-    );
-  }
 
   void _showTTSSettings() {
     showDialog(
@@ -517,16 +483,13 @@ class _ChatScreenState extends State<ChatScreen> {
               if (value == 'tts_settings') {
                 _showTTSSettings();
               } else if (value == 'api_settings') {
-              await Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => const OpenAIConfigScreen(),
+              // La clé API est maintenant gérée côté serveur
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('La clé API OpenAI est gérée automatiquement côté serveur'),
+                  backgroundColor: Colors.blue,
                 ),
               );
-              await _checkApiKey();
-              // Recharger l'historique si nécessaire
-              if (_messages.isEmpty || (_messages.length == 1 && _messages[0]['role'] == 'system')) {
-                _addWelcomeMessage();
-              }
               }
             },
             itemBuilder: (context) => [
@@ -730,24 +693,10 @@ class _ChatScreenState extends State<ChatScreen> {
                                   ],
                                   if (isAuthError) ...[
                                     const SizedBox(height: 12),
-                                    ElevatedButton.icon(
-                                      onPressed: () {
-                                        Navigator.of(context).push(
-                                          MaterialPageRoute(
-                                            builder: (context) => const OpenAIConfigScreen(),
-                                          ),
-                                        ).then((_) => _checkApiKey());
-                                      },
-                                      icon: const Icon(Icons.settings, size: 18),
-                                      label: const Text('Vérifier la clé API'),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.orange.shade600,
-                                        foregroundColor: Colors.white,
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 16,
-                                          vertical: 8,
-                                        ),
-                                      ),
+                                    const Text(
+                                      'La clé API est gérée côté serveur. Assurez-vous d\'être connecté.',
+                                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                                      textAlign: TextAlign.center,
                                     ),
                                   ],
                                 ],
@@ -886,7 +835,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             ),
                           ),
                           const SizedBox(width: 8),
-                          const Expanded(
+                          Flexible(
                             child: Text(
                               'Écoute en cours...',
                               style: TextStyle(
@@ -894,6 +843,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                 fontWeight: FontWeight.bold,
                                 fontSize: 12,
                               ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           // Bouton Terminer et envoyer

@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
+import '../config/supabase_config.dart';
+import 'supabase_service.dart';
 
 /// Exception personnalisée pour les erreurs OpenAI
 class OpenAIException implements Exception {
@@ -17,88 +19,75 @@ class OpenAIException implements Exception {
 }
 
 class OpenAIService {
-  static const String _apiKeyPrefKey = 'openai_api_key';
-  static const String _apiUrl = 'https://api.openai.com/v1/chat/completions';
-  static const String _ttsUrl = 'https://api.openai.com/v1/audio/speech';
+  // Utiliser l'API du serveur web Next.js au lieu d'OpenAI directement
+  static String get _apiUrl => '${ApiConfig.baseUrl}/api/chat';
+  static String get _ttsUrl => '${ApiConfig.baseUrl}/api/chat/tts';
 
-  /// Récupère la clé API stockée
+  // Note: Les méthodes de gestion de clé API ne sont plus utilisées
+  // La clé API est maintenant gérée côté serveur
+  // Ces méthodes sont conservées pour compatibilité mais ne sont plus nécessaires
   static Future<String?> getApiKey() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_apiKeyPrefKey);
+    // Plus utilisé - la clé est côté serveur
+    return null;
   }
 
-  /// Sauvegarde la clé API
   static Future<bool> setApiKey(String apiKey) async {
-    final prefs = await SharedPreferences.getInstance();
-    return await prefs.setString(_apiKeyPrefKey, apiKey);
+    // Plus utilisé - la clé est côté serveur
+    return false;
   }
 
-  /// Supprime la clé API
   static Future<bool> removeApiKey() async {
-    final prefs = await SharedPreferences.getInstance();
-    return await prefs.remove(_apiKeyPrefKey);
+    // Plus utilisé - la clé est côté serveur
+    return false;
   }
 
-  /// Vérifie si une clé API est configurée
   static Future<bool> hasApiKey() async {
-    final apiKey = await getApiKey();
-    return apiKey != null && apiKey.isNotEmpty;
+    // Vérifier que l'utilisateur est connecté (la clé API est côté serveur)
+    final supabase = SupabaseService.client;
+    final session = supabase.auth.currentSession;
+    return session != null;
   }
 
-  /// Envoie un message à OpenAI et récupère la réponse
+  /// Envoie un message à OpenAI via le serveur web et récupère la réponse
   static Future<String> sendMessage({
     required String message,
     required List<Map<String, String>> conversationHistory,
   }) async {
-    final apiKey = await getApiKey();
-    if (apiKey == null || apiKey.isEmpty) {
-      throw Exception('Clé API OpenAI non configurée');
+    // Récupérer le token d'authentification Supabase
+    final supabase = SupabaseService.client;
+    final session = supabase.auth.currentSession;
+    if (session == null) {
+      throw OpenAIException('Vous devez être connecté pour utiliser le chat');
     }
 
-    // Construire l'historique de conversation au format OpenAI
-    final messages = <Map<String, dynamic>>[
-      {
-        'role': 'system',
-        'content': 'Tu es un assistant utile et amical. Tu réponds en français de manière claire et concise.',
-      },
-      ...conversationHistory.map((msg) => {
-            'role': msg['role'],
-            'content': msg['content'],
-          }),
-      {
-        'role': 'user',
-        'content': message,
-      },
-    ];
-
     try {
+      debugPrint('Envoi de la requête à: $_apiUrl');
       final response = await http.post(
         Uri.parse(_apiUrl),
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer $apiKey',
+          'Authorization': 'Bearer ${session.accessToken}',
         },
         body: jsonEncode({
-          'model': 'gpt-3.5-turbo',
-          'messages': messages,
-          'temperature': 0.7,
-          'max_tokens': 1000,
+          'message': message,
+          'conversationHistory': conversationHistory,
         }),
+      ).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw OpenAIException('Timeout: Le serveur ne répond pas. Vérifiez que votre serveur Next.js est démarré et que l\'URL est correcte dans ApiConfig.baseUrl.');
+        },
       );
+      
+      debugPrint('Réponse reçue: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
-        final choices = data['choices'] as List;
-        if (choices.isNotEmpty) {
-          final message = choices[0]['message'] as Map<String, dynamic>;
-          return message['content'] as String;
-        }
-        throw OpenAIException('Aucune réponse reçue d\'OpenAI');
+        return data['content'] as String;
       } else {
         final errorData = jsonDecode(response.body) as Map<String, dynamic>;
-        final error = errorData['error'] as Map<String, dynamic>?;
-        final errorMessage = error?['message'] as String? ?? 'Erreur inconnue';
-        final errorType = error?['type'] as String?;
+        final errorMessage = errorData['error'] as String? ?? 'Erreur inconnue';
+        final errorType = errorData['type'] as String?;
         
         // Gestion spécifique des erreurs de quota
         if (response.statusCode == 429 || 
@@ -106,7 +95,7 @@ class OpenAIService {
             errorMessage.toLowerCase().contains('exceeded') ||
             errorMessage.toLowerCase().contains('rate limit')) {
           throw OpenAIException(
-            'Vous avez dépassé votre quota OpenAI. Veuillez vérifier votre compte OpenAI ou attendre la réinitialisation de votre quota.',
+            errorMessage,
             type: 'quota_exceeded',
             statusCode: response.statusCode,
           );
@@ -115,7 +104,7 @@ class OpenAIService {
         // Gestion des erreurs d'authentification
         if (response.statusCode == 401) {
           throw OpenAIException(
-            'Clé API invalide. Veuillez vérifier votre clé API dans les paramètres.',
+            errorMessage,
             type: 'invalid_api_key',
             statusCode: response.statusCode,
           );
@@ -124,14 +113,14 @@ class OpenAIService {
         // Gestion des erreurs de paiement
         if (response.statusCode == 402 || errorType == 'insufficient_quota') {
           throw OpenAIException(
-            'Votre compte OpenAI n\'a pas de crédits suffisants. Veuillez ajouter des crédits à votre compte OpenAI.',
+            errorMessage,
             type: 'insufficient_quota',
             statusCode: response.statusCode,
           );
         }
         
         throw OpenAIException(
-          'Erreur OpenAI: $errorMessage',
+          errorMessage,
           type: errorType,
           statusCode: response.statusCode,
         );
@@ -139,6 +128,15 @@ class OpenAIService {
     } catch (e) {
       if (e is OpenAIException) {
         rethrow;
+      }
+      if (e is SocketException) {
+        throw OpenAIException(
+          'Impossible de se connecter au serveur. Vérifiez que:\n'
+          '1. Votre serveur Next.js est démarré (npm run dev)\n'
+          '2. L\'URL dans ApiConfig.baseUrl est correcte\n'
+          '3. Pour un appareil physique, utilisez votre IP locale au lieu de localhost\n'
+          '4. Le serveur est accessible depuis votre réseau',
+        );
       }
       if (e is FormatException) {
         throw OpenAIException('Erreur de format de réponse: ${e.toString()}');
@@ -147,44 +145,56 @@ class OpenAIService {
     }
   }
 
-  /// Génère un fichier audio à partir d'un texte en utilisant l'API TTS d'OpenAI
+  /// Génère un fichier audio à partir d'un texte en utilisant l'API TTS via le serveur web
   /// Retourne le chemin du fichier audio généré
   static Future<String> textToSpeech({
     required String text,
     String voice = 'alloy', // alloy, echo, fable, onyx, nova, shimmer
     double speed = 1.0,
   }) async {
-    final apiKey = await getApiKey();
-    if (apiKey == null || apiKey.isEmpty) {
-      throw OpenAIException('Clé API OpenAI non configurée');
+    // Récupérer le token d'authentification Supabase
+    final supabase = SupabaseService.client;
+    final session = supabase.auth.currentSession;
+    if (session == null) {
+      throw OpenAIException('Vous devez être connecté pour utiliser le TTS');
     }
 
     try {
+      debugPrint('Envoi de la requête TTS à: $_ttsUrl');
       final response = await http.post(
         Uri.parse(_ttsUrl),
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer $apiKey',
+          'Authorization': 'Bearer ${session.accessToken}',
         },
         body: jsonEncode({
-          'model': 'tts-1', // ou 'tts-1-hd' pour une meilleure qualité
-          'input': text,
+          'text': text,
           'voice': voice,
           'speed': speed,
         }),
+      ).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw OpenAIException('Timeout: Le serveur ne répond pas. Vérifiez que votre serveur Next.js est démarré et que l\'URL est correcte dans ApiConfig.baseUrl.');
+        },
       );
+      
+      debugPrint('Réponse TTS reçue: ${response.statusCode}');
 
       if (response.statusCode == 200) {
-        // Sauvegarder le fichier audio temporaire
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final audioBase64 = data['audio'] as String;
+        
+        // Décoder le base64 et sauvegarder le fichier audio temporaire
+        final audioBytes = base64Decode(audioBase64);
         final tempDir = await getTemporaryDirectory();
         final audioFile = File('${tempDir.path}/openai_tts_${DateTime.now().millisecondsSinceEpoch}.mp3');
-        await audioFile.writeAsBytes(response.bodyBytes);
+        await audioFile.writeAsBytes(audioBytes);
         return audioFile.path;
       } else {
         final errorData = jsonDecode(response.body) as Map<String, dynamic>;
-        final error = errorData['error'] as Map<String, dynamic>?;
-        final errorMessage = error?['message'] as String? ?? 'Erreur inconnue';
-        final errorType = error?['type'] as String?;
+        final errorMessage = errorData['error'] as String? ?? 'Erreur inconnue';
+        final errorType = errorData['type'] as String?;
         
         // Gestion spécifique des erreurs de quota
         if (response.statusCode == 429 || 
@@ -192,7 +202,7 @@ class OpenAIService {
             errorMessage.toLowerCase().contains('exceeded') ||
             errorMessage.toLowerCase().contains('rate limit')) {
           throw OpenAIException(
-            'Vous avez dépassé votre quota OpenAI. Veuillez vérifier votre compte OpenAI ou attendre la réinitialisation de votre quota.',
+            errorMessage,
             type: 'quota_exceeded',
             statusCode: response.statusCode,
           );
@@ -201,14 +211,14 @@ class OpenAIService {
         // Gestion des erreurs d'authentification
         if (response.statusCode == 401) {
           throw OpenAIException(
-            'Clé API invalide. Veuillez vérifier votre clé API dans les paramètres.',
+            errorMessage,
             type: 'invalid_api_key',
             statusCode: response.statusCode,
           );
         }
         
         throw OpenAIException(
-          'Erreur TTS OpenAI: $errorMessage',
+          errorMessage,
           type: errorType,
           statusCode: response.statusCode,
         );
@@ -216,6 +226,15 @@ class OpenAIService {
     } catch (e) {
       if (e is OpenAIException) {
         rethrow;
+      }
+      if (e is SocketException) {
+        throw OpenAIException(
+          'Impossible de se connecter au serveur. Vérifiez que:\n'
+          '1. Votre serveur Next.js est démarré (npm run dev)\n'
+          '2. L\'URL dans ApiConfig.baseUrl est correcte\n'
+          '3. Pour un appareil physique, utilisez votre IP locale au lieu de localhost\n'
+          '4. Le serveur est accessible depuis votre réseau',
+        );
       }
       if (e is FormatException) {
         throw OpenAIException('Erreur de format de réponse TTS: ${e.toString()}');
