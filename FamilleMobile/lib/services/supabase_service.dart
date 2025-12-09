@@ -225,6 +225,8 @@ class SupabaseService {
     String? familyMemberId,
     String? familyId,
     DateTime? weekStart,
+    DateTime? dateRangeStart,
+    DateTime? dateRangeEnd,
   }) async {
     debugPrint('=== getSchedules DEBUG ===');
     debugPrint('familyMemberId: $familyMemberId');
@@ -251,8 +253,13 @@ class SupabaseService {
       
       query = query.inFilter('family_member_id', memberIds);
       
-      // Appliquer le filtre de semaine si nécessaire
-      if (weekStart != null) {
+      // Appliquer le filtre de plage de dates si nécessaire
+      if (dateRangeStart != null && dateRangeEnd != null) {
+        final startStr = dateRangeStart.toIso8601String().split('T')[0];
+        final endStr = dateRangeEnd.toIso8601String().split('T')[0];
+        debugPrint('Filtering by date range: $startStr to $endStr');
+        query = query.gte('date', startStr).lte('date', endStr);
+      } else if (weekStart != null) {
         final weekEnd = weekStart.add(const Duration(days: 6));
         final weekStartStr = weekStart.toIso8601String().split('T')[0];
         final weekEndStr = weekEnd.toIso8601String().split('T')[0];
@@ -329,6 +336,7 @@ class SupabaseService {
     required String date,
     required String startTime,
     required String endTime,
+    String? location,
   }) async {
     final response = await client
         .from('schedules')
@@ -339,7 +347,35 @@ class SupabaseService {
           'date': date,
           'start_time': startTime,
           'end_time': endTime,
+          'location': location,
         })
+        .select()
+        .single();
+
+    return Schedule.fromJson(response);
+  }
+
+  Future<Schedule> updateSchedule({
+    required String scheduleId,
+    String? title,
+    String? description,
+    String? date,
+    String? startTime,
+    String? endTime,
+    String? location,
+  }) async {
+    final updates = <String, dynamic>{};
+    if (title != null) updates['title'] = title;
+    if (description != null) updates['description'] = description;
+    if (date != null) updates['date'] = date;
+    if (startTime != null) updates['start_time'] = startTime;
+    if (endTime != null) updates['end_time'] = endTime;
+    if (location != null) updates['location'] = location;
+
+    final response = await client
+        .from('schedules')
+        .update(updates)
+        .eq('id', scheduleId)
         .select()
         .single();
 
@@ -353,15 +389,25 @@ class SupabaseService {
   // Task methods
   Future<List<Task>> getTasks({
     required String familyId,
+    required String familyMemberId,
+    required String userId,
     String? status,
   }) async {
-    var query = client.from('tasks').select('*').eq('family_id', familyId);
+    // Filtrer pour ne garder que les tâches créées par l'utilisateur ou assignées à l'utilisateur
+    var query = client
+        .from('tasks')
+        .select('*')
+        .eq('family_id', familyId)
+        .or('created_by.eq.$userId,assigned_to.eq.$familyMemberId');
 
     if (status != null) {
       query = query.eq('status', status);
     }
 
-    final response = await query.order('due_date', ascending: true);
+    final response = await query
+        .order('priority', ascending: false) // Haute priorité en premier
+        .order('due_date', ascending: true)
+        .order('created_at', ascending: false);
 
     if (response.isEmpty) return [];
 
@@ -376,6 +422,7 @@ class SupabaseService {
     required String title,
     String? description,
     DateTime? dueDate,
+    String priority = 'medium',
     required String createdBy,
   }) async {
     final response = await client
@@ -386,7 +433,8 @@ class SupabaseService {
           'title': title,
           'description': description,
           'due_date': dueDate?.toIso8601String(),
-          'status': 'pending',
+          'priority': priority,
+          'status': 'todo',
           'created_by': createdBy,
         })
         .select()
@@ -395,12 +443,37 @@ class SupabaseService {
     return Task.fromJson(response);
   }
 
-  Future<void> updateTaskStatus(String taskId, TaskStatus status) async {
-    await client
+  Future<Task> updateTask({
+    required String taskId,
+    String? assignedTo,
+    String? title,
+    String? description,
+    DateTime? dueDate,
+    String? priority,
+    TaskStatus? status,
+  }) async {
+    final updates = <String, dynamic>{};
+    if (assignedTo != null) updates['assigned_to'] = assignedTo;
+    if (title != null) updates['title'] = title;
+    if (description != null) updates['description'] = description;
+    if (dueDate != null) {
+      updates['due_date'] = dueDate.toIso8601String();
+    } else if (dueDate == null && updates.containsKey('due_date')) {
+      updates['due_date'] = null;
+    }
+    if (priority != null) updates['priority'] = priority;
+    if (status != null) updates['status'] = status.toString();
+
+    final response = await client
         .from('tasks')
-        .update({'status': status.toString()})
-        .eq('id', taskId);
+        .update(updates)
+        .eq('id', taskId)
+        .select()
+        .single();
+
+    return Task.fromJson(response);
   }
+
 
   Future<void> deleteTask(String taskId) async {
     await client.from('tasks').delete().eq('id', taskId);

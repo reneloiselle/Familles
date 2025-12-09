@@ -38,6 +38,8 @@ class ScheduleProvider with ChangeNotifier {
     String? familyMemberId,
     DateTime? date,
     DateTime? weekStart,
+    DateTime? dateRangeStart,
+    DateTime? dateRangeEnd,
   }) async {
     _isLoading = true;
     _error = null;
@@ -55,6 +57,12 @@ class ScheduleProvider with ChangeNotifier {
           final dateStr = date.toIso8601String().split('T')[0];
           _schedules = _schedules.where((s) => s.date == dateStr).toList();
         }
+        // Trier les horaires par date puis par heure de début
+        _schedules.sort((a, b) {
+          final dateCompare = a.date.compareTo(b.date);
+          if (dateCompare != 0) return dateCompare;
+          return a.startTime.compareTo(b.startTime);
+        });
       } else {
         // Charger pour toute la famille
         debugPrint('=== ScheduleProvider.loadSchedules ===');
@@ -65,6 +73,8 @@ class ScheduleProvider with ChangeNotifier {
         _schedules = await _service.getSchedules(
           familyId: familyId,
           weekStart: weekStart,
+          dateRangeStart: dateRangeStart,
+          dateRangeEnd: dateRangeEnd,
         );
         
         debugPrint('Loaded ${_schedules.length} schedules');
@@ -79,6 +89,13 @@ class ScheduleProvider with ChangeNotifier {
           _schedules = _schedules.where((s) => s.date == dateStr).toList();
           debugPrint('After date filter: ${_schedules.length} schedules (was $beforeFilter)');
         }
+        
+        // Trier les horaires par date puis par heure de début
+        _schedules.sort((a, b) {
+          final dateCompare = a.date.compareTo(b.date);
+          if (dateCompare != 0) return dateCompare;
+          return a.startTime.compareTo(b.startTime);
+        });
         
         // Debug: afficher les schedules par membre
         final schedulesByMember = <String, int>{};
@@ -162,6 +179,7 @@ class ScheduleProvider with ChangeNotifier {
     required String date,
     required String startTime,
     required String endTime,
+    String? location,
   }) async {
     _isLoading = true;
     _error = null;
@@ -175,6 +193,7 @@ class ScheduleProvider with ChangeNotifier {
         date: date,
         startTime: startTime,
         endTime: endTime,
+        location: location,
       );
       // Realtime mettra à jour automatiquement _schedules
     } catch (e) {
@@ -215,6 +234,104 @@ class ScheduleProvider with ChangeNotifier {
     // Filtrer côté client pour obtenir les horaires personnels
     // Note: Cela nécessite que les schedules incluent l'information du membre
     return _schedules;
+  }
+
+  // Fonctions de détection de chevauchement et back-to-back
+  bool schedulesOverlap(Schedule schedule1, Schedule schedule2) {
+    if (schedule1.date != schedule2.date) return false;
+    
+    // Convertir les heures en minutes pour faciliter la comparaison
+    int timeToMinutes(String time) {
+      final parts = time.split(':');
+      return int.parse(parts[0]) * 60 + int.parse(parts[1]);
+    }
+    
+    final start1 = timeToMinutes(schedule1.startTime);
+    final end1 = timeToMinutes(schedule1.endTime);
+    final start2 = timeToMinutes(schedule2.startTime);
+    final end2 = timeToMinutes(schedule2.endTime);
+    
+    // Deux horaires se chevauchent si l'un commence avant que l'autre se termine
+    // et se termine après que l'autre commence
+    return (start1 < end2 && end1 > start2);
+  }
+
+  List<String> getOverlappingScheduleIds(Schedule schedule, List<Schedule> allSchedules) {
+    return allSchedules
+        .where((s) => s.id != schedule.id && schedulesOverlap(schedule, s))
+        .map((s) => s.id)
+        .toList();
+  }
+
+  // Fonction pour vérifier si deux horaires sont back-to-back (moins de 30 minutes entre eux)
+  bool schedulesAreBackToBack(Schedule schedule1, Schedule schedule2) {
+    // Doit être le même membre et la même date
+    if (schedule1.familyMemberId != schedule2.familyMemberId || schedule1.date != schedule2.date) {
+      return false;
+    }
+
+    // Convertir les heures en minutes pour faciliter la comparaison
+    int timeToMinutes(String time) {
+      final parts = time.split(':');
+      return int.parse(parts[0]) * 60 + int.parse(parts[1]);
+    }
+
+    final end1 = timeToMinutes(schedule1.endTime);
+    final start2 = timeToMinutes(schedule2.startTime);
+    final end2 = timeToMinutes(schedule2.endTime);
+    final start1 = timeToMinutes(schedule1.startTime);
+
+    // Vérifier si schedule1 se termine et schedule2 commence dans les 30 minutes
+    if (end1 <= start2 && start2 - end1 <= 30) {
+      return true;
+    }
+
+    // Vérifier si schedule2 se termine et schedule1 commence dans les 30 minutes
+    if (end2 <= start1 && start1 - end2 <= 30) {
+      return true;
+    }
+
+    return false;
+  }
+
+  List<String> getBackToBackScheduleIds(Schedule schedule, List<Schedule> allSchedules) {
+    return allSchedules
+        .where((s) => s.id != schedule.id && schedulesAreBackToBack(schedule, s))
+        .map((s) => s.id)
+        .toList();
+  }
+
+  Future<void> updateSchedule({
+    required String scheduleId,
+    String? title,
+    String? description,
+    String? date,
+    String? startTime,
+    String? endTime,
+    String? location,
+  }) async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      await _service.updateSchedule(
+        scheduleId: scheduleId,
+        title: title,
+        description: description,
+        date: date,
+        startTime: startTime,
+        endTime: endTime,
+        location: location,
+      );
+      // Realtime mettra à jour automatiquement _schedules
+    } catch (e) {
+      _error = e.toString();
+      rethrow;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 
   void clearError() {

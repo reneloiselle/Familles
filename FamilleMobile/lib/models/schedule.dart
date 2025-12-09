@@ -7,6 +7,7 @@ class Schedule {
   final String date; // Format: YYYY-MM-DD
   final String startTime; // Format: HH:mm
   final String endTime; // Format: HH:mm
+  final String? location;
   final DateTime createdAt;
 
   Schedule({
@@ -17,6 +18,7 @@ class Schedule {
     required this.date,
     required this.startTime,
     required this.endTime,
+    this.location,
     required this.createdAt,
   });
 
@@ -29,6 +31,7 @@ class Schedule {
       date: json['date'] as String,
       startTime: json['start_time'] as String,
       endTime: json['end_time'] as String,
+      location: json['location'] as String?,
       createdAt: DateTime.parse(json['created_at'] as String),
     );
   }
@@ -42,6 +45,7 @@ class Schedule {
       'date': date,
       'start_time': startTime,
       'end_time': endTime,
+      'location': location,
       'created_at': createdAt.toIso8601String(),
     };
   }

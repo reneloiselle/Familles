@@ -75,15 +75,18 @@ class _ScheduleScreenContentState extends State<_ScheduleScreenContent> {
     DateTime? weekStart;
     DateTime? date;
 
+    DateTime? dateRangeStart;
+    DateTime? dateRangeEnd;
+
     if (view == 'week') {
       // Calculer le lundi de la semaine
       final monday = selectedDate.subtract(Duration(days: selectedDate.weekday - 1));
       weekStart = DateTime(monday.year, monday.month, monday.day);
     } else if (view == 'family') {
-      // Pour la vue famille (workWeek), charger toute la semaine (lundi à vendredi)
-      final monday = selectedDate.subtract(Duration(days: selectedDate.weekday - 1));
-      weekStart = DateTime(monday.year, monday.month, monday.day);
-      // Ne pas utiliser date pour la vue family car on veut voir toute la semaine
+      // Pour la vue famille, afficher les 7 prochains jours à partir d'aujourd'hui
+      final today = DateTime.now();
+      dateRangeStart = DateTime(today.year, today.month, today.day);
+      dateRangeEnd = dateRangeStart.add(const Duration(days: 7));
     }
 
     provider.loadSchedules(
@@ -91,6 +94,8 @@ class _ScheduleScreenContentState extends State<_ScheduleScreenContent> {
       familyMemberId: view == 'personal' ? widget.familyMember.id : null,
       date: date,
       weekStart: weekStart,
+      dateRangeStart: dateRangeStart,
+      dateRangeEnd: dateRangeEnd,
     );
   }
 
@@ -389,6 +394,7 @@ class _ScheduleScreenContentState extends State<_ScheduleScreenContent> {
                       schedules: provider.schedules,
                       currentUserId: context.read<AuthProvider>().user?.id,
                       onDelete: (id) => _deleteSchedule(context, provider, id),
+                      provider: provider,
                     ),
                 ],
               ),
@@ -473,6 +479,16 @@ class _ScheduleScreenContentState extends State<_ScheduleScreenContent> {
             Text('Date: ${DateFormat('dd/MM/yyyy').format(schedule.dateTime)}'),
             const SizedBox(height: 4),
             Text('Heure: ${schedule.startTime} - ${schedule.endTime}'),
+            if (schedule.location != null) ...[
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  const Icon(Icons.location_on, size: 16),
+                  const SizedBox(width: 4),
+                  Expanded(child: Text(schedule.location!)),
+                ],
+              ),
+            ],
           ],
         ),
         actions: [
@@ -534,6 +550,7 @@ class _CreateScheduleFormState extends State<_CreateScheduleForm> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
+  final _locationController = TextEditingController();
   String? _selectedMemberId;
   DateTime _selectedDate = DateTime.now();
   TimeOfDay _startTime = const TimeOfDay(hour: 9, minute: 0);
@@ -550,6 +567,7 @@ class _CreateScheduleFormState extends State<_CreateScheduleForm> {
   void dispose() {
     _titleController.dispose();
     _descriptionController.dispose();
+    _locationController.dispose();
     super.dispose();
   }
 
@@ -570,6 +588,7 @@ class _CreateScheduleFormState extends State<_CreateScheduleForm> {
         date: _selectedDate.toIso8601String().split('T')[0],
         startTime: '${_startTime.hour.toString().padLeft(2, '0')}:${_startTime.minute.toString().padLeft(2, '0')}',
         endTime: '${_endTime.hour.toString().padLeft(2, '0')}:${_endTime.minute.toString().padLeft(2, '0')}',
+        location: _locationController.text.trim().isEmpty ? null : _locationController.text.trim(),
       );
 
       if (mounted) {
@@ -684,6 +703,15 @@ class _CreateScheduleFormState extends State<_CreateScheduleForm> {
                 maxLines: 3,
               ),
               const SizedBox(height: 12),
+              TextFormField(
+                controller: _locationController,
+                decoration: const InputDecoration(
+                  labelText: 'Localisation (optionnel)',
+                  border: OutlineInputBorder(),
+                  hintText: 'Adresse, lieu, etc.',
+                ),
+              ),
+              const SizedBox(height: 12),
               Row(
                 children: [
                   Expanded(
@@ -760,11 +788,13 @@ class _PersonalView extends StatelessWidget {
   final List<Schedule> schedules;
   final String? currentUserId;
   final Function(String) onDelete;
+  final ScheduleProvider? provider;
 
   const _PersonalView({
     required this.schedules,
     required this.currentUserId,
     required this.onDelete,
+    this.provider,
   });
 
   @override
@@ -787,18 +817,28 @@ class _PersonalView extends StatelessWidget {
       );
     }
 
-    // Grouper par date
+    // Grouper par date et trier
     final grouped = <String, List<Schedule>>{};
     for (final schedule in schedules) {
       grouped.putIfAbsent(schedule.date, () => []).add(schedule);
     }
 
+    // Trier les horaires dans chaque groupe par heure de début
+    for (final entry in grouped.entries) {
+      entry.value.sort((a, b) => a.startTime.compareTo(b.startTime));
+    }
+
+    // Trier les dates dans l'ordre chronologique
+    final sortedEntries = grouped.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+
     return Column(
-      children: grouped.entries
+      children: sortedEntries
           .map((entry) => _DayScheduleCard(
                 date: entry.key,
                 schedules: entry.value,
                 onDelete: onDelete,
+                provider: provider,
               ))
           .toList(),
     );
@@ -809,11 +849,13 @@ class _DayScheduleCard extends StatelessWidget {
   final String date;
   final List<Schedule> schedules;
   final Function(String) onDelete;
+  final ScheduleProvider? provider;
 
   const _DayScheduleCard({
     required this.date,
     required this.schedules,
     required this.onDelete,
+    this.provider,
   });
 
   @override
@@ -831,15 +873,28 @@ class _DayScheduleCard extends StatelessWidget {
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
-            ...schedules.map((schedule) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _ScheduleCard(
-                    schedule: schedule,
-                    memberName: null,
-                    canDelete: true,
-                    onDelete: () => onDelete(schedule.id),
-                  ),
-                )),
+            ...schedules.map((schedule) {
+              final overlappingIds = provider != null
+                  ? provider!.getOverlappingScheduleIds(schedule, schedules)
+                  : <String>[];
+              final hasOverlap = overlappingIds.isNotEmpty;
+              final backToBackIds = provider != null
+                  ? provider!.getBackToBackScheduleIds(schedule, schedules)
+                  : <String>[];
+              final hasBackToBack = backToBackIds.isNotEmpty && !hasOverlap;
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _ScheduleCard(
+                  schedule: schedule,
+                  memberName: null,
+                  canDelete: true,
+                  onDelete: () => onDelete(schedule.id),
+                  hasOverlap: hasOverlap,
+                  hasBackToBack: hasBackToBack,
+                ),
+              );
+            }),
           ],
         ),
       ),
@@ -852,22 +907,37 @@ class _ScheduleCard extends StatelessWidget {
   final String? memberName;
   final bool canDelete;
   final VoidCallback onDelete;
+  final bool hasOverlap;
+  final bool hasBackToBack;
 
   const _ScheduleCard({
     required this.schedule,
     this.memberName,
     required this.canDelete,
     required this.onDelete,
+    this.hasOverlap = false,
+    this.hasBackToBack = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final borderColor = hasOverlap
+        ? Colors.red
+        : hasBackToBack
+            ? Colors.orange
+            : Theme.of(context).colorScheme.primary;
+    final backgroundColor = hasOverlap
+        ? Colors.red.shade50
+        : hasBackToBack
+            ? Colors.orange.shade50
+            : Colors.grey.shade50;
+
     return Container(
       decoration: BoxDecoration(
         border: Border(
-          left: BorderSide(color: Theme.of(context).colorScheme.primary, width: 4),
+          left: BorderSide(color: borderColor, width: 4),
         ),
-        color: Colors.grey.shade50,
+        color: backgroundColor,
         borderRadius: BorderRadius.circular(4),
       ),
       padding: const EdgeInsets.all(12),
@@ -877,9 +947,39 @@ class _ScheduleCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  schedule.title,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        schedule.title,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    if (hasOverlap)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade200,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          '⚠️ Conflit',
+                          style: TextStyle(fontSize: 10, color: Colors.red),
+                        ),
+                      )
+                    else if (hasBackToBack)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade200,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          '🚗 Transport',
+                          style: TextStyle(fontSize: 10, color: Colors.orange),
+                        ),
+                      ),
+                  ],
                 ),
                 if (memberName != null) ...[
                   const SizedBox(height: 4),
@@ -904,6 +1004,21 @@ class _ScheduleCard extends StatelessWidget {
                   Text(
                     schedule.description!,
                     style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+                ],
+                if (schedule.location != null) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(Icons.location_on, size: 14, color: Colors.grey[600]),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          schedule.location!,
+                          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ],

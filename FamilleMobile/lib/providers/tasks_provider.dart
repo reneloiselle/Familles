@@ -27,18 +27,27 @@ class TasksProvider with ChangeNotifier {
   }
 
   final _service = SupabaseService();
+  String? _currentFamilyMemberId;
+  String? _currentUserId;
 
-  Future<void> loadTasks(String familyId, {String? status}) async {
+  Future<void> loadTasks(String familyId, String familyMemberId, String userId, {String? status}) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
 
     try {
-      _tasks = await _service.getTasks(familyId: familyId, status: status);
+      _currentFamilyMemberId = familyMemberId;
+      _currentUserId = userId;
+      _tasks = await _service.getTasks(
+        familyId: familyId,
+        familyMemberId: familyMemberId,
+        userId: userId,
+        status: status,
+      );
       
       // Initialiser la subscription Realtime si nécessaire
       if (_currentFamilyId != familyId) {
-        _setupRealtimeSubscription(familyId);
+        _setupRealtimeSubscription(familyId, familyMemberId, userId);
         _currentFamilyId = familyId;
       }
     } catch (e) {
@@ -49,7 +58,7 @@ class TasksProvider with ChangeNotifier {
     }
   }
 
-  void _setupRealtimeSubscription(String familyId) {
+  void _setupRealtimeSubscription(String familyId, String familyMemberId, String userId) {
     // Nettoyer l'ancienne subscription
     _tasksChannel?.unsubscribe();
 
@@ -73,10 +82,18 @@ class TasksProvider with ChangeNotifier {
   }
 
   void _handleTaskChange(PostgresChangePayload payload) {
+    // Filtrer pour ne garder que les tâches créées par l'utilisateur ou assignées à l'utilisateur
+    final shouldIncludeTask = (Task task) {
+      if (_currentUserId == null || _currentFamilyMemberId == null) return false;
+      return task.createdBy == _currentUserId || task.assignedTo == _currentFamilyMemberId;
+    };
+
     switch (payload.eventType) {
       case PostgresChangeEvent.insert:
         final newTask = Task.fromJson(payload.newRecord);
-        _tasks = [newTask, ..._tasks];
+        if (shouldIncludeTask(newTask)) {
+          _tasks = [newTask, ..._tasks];
+        }
         _tasks.sort((a, b) {
           // Trier par date d'échéance (null en dernier), puis par date de création
           if (a.dueDate != null && b.dueDate != null) {
@@ -93,7 +110,18 @@ class TasksProvider with ChangeNotifier {
         break;
       case PostgresChangeEvent.update:
         final updatedTask = Task.fromJson(payload.newRecord);
-        _tasks = _tasks.map((task) => task.id == updatedTask.id ? updatedTask : task).toList();
+        if (shouldIncludeTask(updatedTask)) {
+          // Si la tâche existe déjà, la mettre à jour, sinon l'ajouter
+          final existingIndex = _tasks.indexWhere((t) => t.id == updatedTask.id);
+          if (existingIndex >= 0) {
+            _tasks[existingIndex] = updatedTask;
+          } else {
+            _tasks = [updatedTask, ..._tasks];
+          }
+        } else {
+          // Si la tâche n'est plus pertinente, la retirer
+          _tasks = _tasks.where((t) => t.id != updatedTask.id).toList();
+        }
         _tasks.sort((a, b) {
           if (a.dueDate != null && b.dueDate != null) {
             final dateCompare = a.dueDate!.compareTo(b.dueDate!);
@@ -128,6 +156,7 @@ class TasksProvider with ChangeNotifier {
     required String title,
     String? description,
     DateTime? dueDate,
+    String priority = 'medium',
     required String createdBy,
   }) async {
     _isLoading = true;
@@ -141,6 +170,7 @@ class TasksProvider with ChangeNotifier {
         title: title,
         description: description,
         dueDate: dueDate,
+        priority: priority,
         createdBy: createdBy,
       );
       // Realtime mettra à jour automatiquement _tasks
@@ -159,7 +189,40 @@ class TasksProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      await _service.updateTaskStatus(taskId, status);
+      await _service.updateTask(taskId: taskId, status: status);
+      // Realtime mettra à jour automatiquement _tasks
+    } catch (e) {
+      _error = e.toString();
+      rethrow;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> updateTask({
+    required String taskId,
+    String? assignedTo,
+    String? title,
+    String? description,
+    DateTime? dueDate,
+    String? priority,
+    TaskStatus? status,
+  }) async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      await _service.updateTask(
+        taskId: taskId,
+        assignedTo: assignedTo,
+        title: title,
+        description: description,
+        dueDate: dueDate,
+        priority: priority,
+        status: status,
+      );
       // Realtime mettra à jour automatiquement _tasks
     } catch (e) {
       _error = e.toString();
