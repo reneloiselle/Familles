@@ -9,6 +9,21 @@ import { CalendarSubscriptionManager } from './CalendarSubscriptionManager'
 import { LocationPicker } from './LocationPicker'
 import { LocationViewer } from './LocationViewer'
 
+// Helper function pour obtenir la date locale au format YYYY-MM-DD sans problème de fuseau horaire
+function getLocalDateString(date?: Date): string {
+  const d = date || new Date()
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+// Helper function pour créer une date locale à partir d'une chaîne YYYY-MM-DD
+function parseLocalDate(dateStr: string): Date {
+  const [year, month, day] = dateStr.split('-').map(Number)
+  return new Date(year, month - 1, day)
+}
+
 interface Schedule {
   id: string
   family_member_id: string
@@ -77,7 +92,7 @@ export function ScheduleManagement({
     title: '',
     description: '',
     location: '',
-    date: new Date().toISOString().split('T')[0],
+    date: getLocalDateString(),
     start_time: '09:00',
     end_time: '10:00',
     family_member_id: familyMember.id,
@@ -118,11 +133,11 @@ export function ScheduleManagement({
   }, [familyMembers])
 
   const getWeekStart = (dateStr: string) => {
-    const date = new Date(dateStr + 'T00:00:00')
+    const date = parseLocalDate(dateStr)
     const day = date.getDay()
     const monday = new Date(date)
     monday.setDate(date.getDate() - day + (day === 0 ? -6 : 1))
-    return monday.toISOString().split('T')[0]
+    return getLocalDateString(monday)
   }
 
   // Recharger les horaires quand la date ou la vue change
@@ -142,16 +157,16 @@ export function ScheduleManagement({
 
       if (view === 'family') {
         // Pour la vue family, afficher les 7 prochains jours à partir d'aujourd'hui
-        const today = new Date().toISOString().split('T')[0]
+        const today = getLocalDateString()
         const endDate = new Date(today)
         endDate.setDate(endDate.getDate() + 7)
-        const endDateStr = endDate.toISOString().split('T')[0]
+        const endDateStr = getLocalDateString(endDate)
         query = query.gte('date', today).lte('date', endDateStr)
       } else if (view === 'week') {
         const weekStart = getWeekStart(selectedDate)
         const weekEnd = new Date(weekStart)
         weekEnd.setDate(weekEnd.getDate() + 6)
-        query = query.gte('date', weekStart).lte('date', weekEnd.toISOString().split('T')[0])
+        query = query.gte('date', weekStart).lte('date', getLocalDateString(weekEnd))
       }
       // Pour 'personal', on filtre côté client
 
@@ -219,16 +234,16 @@ export function ScheduleManagement({
 
       if (view === 'family') {
         // Pour la vue family, afficher les 7 prochains jours à partir d'aujourd'hui
-        const today = new Date().toISOString().split('T')[0]
+        const today = getLocalDateString()
         const endDate = new Date(today)
         endDate.setDate(endDate.getDate() + 7)
-        const endDateStr = endDate.toISOString().split('T')[0]
+        const endDateStr = getLocalDateString(endDate)
         reloadQuery = reloadQuery.gte('date', today).lte('date', endDateStr)
       } else if (view === 'week') {
         const weekStart = getWeekStart(selectedDate)
         const weekEnd = new Date(weekStart)
         weekEnd.setDate(weekEnd.getDate() + 6)
-        reloadQuery = reloadQuery.gte('date', weekStart).lte('date', weekEnd.toISOString().split('T')[0])
+        reloadQuery = reloadQuery.gte('date', weekStart).lte('date', getLocalDateString(weekEnd))
       }
       // Pour 'personal', on recharge tout et on filtre côté client
 
@@ -246,7 +261,7 @@ export function ScheduleManagement({
         title: '',
         description: '',
         location: '',
-        date: new Date().toISOString().split('T')[0],
+        date: getLocalDateString(),
         start_time: '09:00',
         end_time: '10:00',
         family_member_id: familyMember.id,
@@ -316,16 +331,16 @@ export function ScheduleManagement({
         .in('family_member_id', familyMemberIds)
 
       if (view === 'family') {
-        const today = new Date().toISOString().split('T')[0]
+        const today = getLocalDateString()
         const endDate = new Date(today)
         endDate.setDate(endDate.getDate() + 7)
-        const endDateStr = endDate.toISOString().split('T')[0]
+        const endDateStr = getLocalDateString(endDate)
         reloadQuery = reloadQuery.gte('date', today).lte('date', endDateStr)
       } else if (view === 'week') {
         const weekStart = getWeekStart(selectedDate)
         const weekEnd = new Date(weekStart)
         weekEnd.setDate(weekEnd.getDate() + 6)
-        reloadQuery = reloadQuery.gte('date', weekStart).lte('date', weekEnd.toISOString().split('T')[0])
+        reloadQuery = reloadQuery.gte('date', weekStart).lte('date', getLocalDateString(weekEnd))
       }
 
       const { data: updatedSchedules } = await reloadQuery
@@ -373,7 +388,7 @@ export function ScheduleManagement({
 
   // Calculate week days (Monday to Sunday)
   const getWeekDays = (dateStr: string) => {
-    const date = new Date(dateStr + 'T00:00:00') // Add time to avoid timezone issues
+    const date = parseLocalDate(dateStr)
     const day = date.getDay()
     const diff = date.getDate() - day + (day === 0 ? -6 : 1) // Adjust when day is Sunday (0)
     const monday = new Date(date)
@@ -383,7 +398,7 @@ export function ScheduleManagement({
     for (let i = 0; i < 7; i++) {
       const d = new Date(monday)
       d.setDate(monday.getDate() + i)
-      days.push(d.toISOString().split('T')[0])
+      days.push(getLocalDateString(d))
     }
     return days
   }
@@ -585,10 +600,11 @@ export function ScheduleManagement({
             <div className="flex gap-2">
               <button
                 onClick={() => {
-                  const newDate = new Date(selectedDate)
+                  const newDate = parseLocalDate(selectedDate)
                   newDate.setDate(newDate.getDate() - 7)
-                  setSelectedDate(newDate.toISOString().split('T')[0])
-                  router.push(`/dashboard/schedule?view=week&date=${newDate.toISOString().split('T')[0]}`)
+                  const newDateStr = getLocalDateString(newDate)
+                  setSelectedDate(newDateStr)
+                  router.push(`/dashboard/schedule?view=week&date=${newDateStr}`)
                 }}
                 className="btn btn-secondary"
               >
@@ -596,10 +612,11 @@ export function ScheduleManagement({
               </button>
               <button
                 onClick={() => {
-                  const newDate = new Date(selectedDate)
+                  const newDate = parseLocalDate(selectedDate)
                   newDate.setDate(newDate.getDate() + 7)
-                  setSelectedDate(newDate.toISOString().split('T')[0])
-                  router.push(`/dashboard/schedule?view=week&date=${newDate.toISOString().split('T')[0]}`)
+                  const newDateStr = getLocalDateString(newDate)
+                  setSelectedDate(newDateStr)
+                  router.push(`/dashboard/schedule?view=week&date=${newDateStr}`)
                 }}
                 className="btn btn-secondary"
               >
@@ -607,7 +624,7 @@ export function ScheduleManagement({
               </button>
               <button
                 onClick={() => {
-                  const today = new Date().toISOString().split('T')[0]
+                  const today = getLocalDateString()
                   setSelectedDate(today)
                   router.push(`/dashboard/schedule?view=week&date=${today}`)
                 }}
@@ -1016,7 +1033,7 @@ export function ScheduleManagement({
                 return (
                   <div key={date} className="card">
                     <h3 className="text-lg font-semibold mb-4 pb-2 border-b border-gray-200">
-                      {new Date(date).toLocaleDateString('fr-FR', {
+                      {parseLocalDate(date).toLocaleDateString('fr-FR', {
                         weekday: 'long',
                         year: 'numeric',
                         month: 'long',
@@ -1251,8 +1268,8 @@ export function ScheduleManagement({
                     Membre
                   </th>
                   {weekDays.map((day, idx) => {
-                    const date = new Date(day)
-                    const isToday = day === new Date().toISOString().split('T')[0]
+                    const date = parseLocalDate(day)
+                    const isToday = day === getLocalDateString()
                     return (
                       <th
                         key={day}

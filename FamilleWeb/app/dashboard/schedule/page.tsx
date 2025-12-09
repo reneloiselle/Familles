@@ -2,6 +2,21 @@ import { createServerClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { ScheduleManagement } from '@/components/ScheduleManagement'
 
+// Helper function pour obtenir la date locale au format YYYY-MM-DD sans problème de fuseau horaire
+function getLocalDateString(date?: Date): string {
+  const d = date || new Date()
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+// Helper function pour créer une date locale à partir d'une chaîne YYYY-MM-DD
+function parseLocalDate(dateStr: string): Date {
+  const [year, month, day] = dateStr.split('-').map(Number)
+  return new Date(year, month - 1, day)
+}
+
 async function getUserFamily(supabase: any, userId: string) {
   const { data } = await supabase
     .from('family_members')
@@ -44,9 +59,9 @@ async function getSchedules(
     query = query.eq('date', date)
   } else if (weekStart) {
     // Get schedules for the week (7 days starting from weekStart)
-    const weekEnd = new Date(weekStart)
+    const weekEnd = parseLocalDate(weekStart)
     weekEnd.setDate(weekEnd.getDate() + 6)
-    query = query.gte('date', weekStart).lte('date', weekEnd.toISOString().split('T')[0])
+    query = query.gte('date', weekStart).lte('date', getLocalDateString(weekEnd))
   }
 
   const { data, error } = await query.order('date', { ascending: true }).order('start_time', { ascending: true })
@@ -80,24 +95,24 @@ export default async function SchedulePage({
   const familyMembers = await getFamilyMembers(supabase, familyMember.family_id)
   const familyMemberIds = familyMembers.map((m: any) => m.id)
 
-  const selectedDate = searchParams.date || new Date().toISOString().split('T')[0]
+  const selectedDate = searchParams.date || getLocalDateString()
   const view = searchParams.view || (familyMember.role === 'parent' ? 'family' : 'personal')
 
   // Calculate week start (Monday of the week containing selectedDate)
   const getWeekStart = (dateStr: string) => {
-    const date = new Date(dateStr + 'T00:00:00') // Add time to avoid timezone issues
+    const date = parseLocalDate(dateStr)
     const day = date.getDay()
     const diff = date.getDate() - day + (day === 0 ? -6 : 1) // Adjust when day is Sunday
     const monday = new Date(date)
     monday.setDate(date.getDate() - day + (day === 0 ? -6 : 1))
-    return monday.toISOString().split('T')[0]
+    return getLocalDateString(monday)
   }
 
   // Pour la vue family, calculer la plage de 7 jours à partir d'aujourd'hui
-  const today = new Date().toISOString().split('T')[0]
-  const endDate = new Date(today)
+  const today = getLocalDateString()
+  const endDate = new Date()
   endDate.setDate(endDate.getDate() + 7)
-  const endDateStr = endDate.toISOString().split('T')[0]
+  const endDateStr = getLocalDateString(endDate)
 
   const weekStart = view === 'week' ? getWeekStart(selectedDate) : undefined
   const familyDateRange = view === 'family' ? { start: today, end: endDateStr } : undefined
