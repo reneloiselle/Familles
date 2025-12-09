@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:convert';
 import '../config/supabase_config.dart';
 
@@ -109,6 +110,40 @@ class _LocationViewerState extends State<LocationViewer> {
       }
     } catch (e) {
       setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _openDirections() async {
+    if (_location == null) return;
+
+    final lat = _location!.latitude;
+    final lng = _location!.longitude;
+    
+    // Essayer d'ouvrir avec Google Maps d'abord, puis Apple Maps
+    final googleMapsUrl = Uri.parse('https://www.google.com/maps/dir/?api=1&destination=$lat,$lng');
+    final appleMapsUrl = Uri.parse('https://maps.apple.com/?daddr=$lat,$lng');
+    
+    try {
+      // Essayer Google Maps
+      if (await canLaunchUrl(googleMapsUrl)) {
+        await launchUrl(googleMapsUrl, mode: LaunchMode.externalApplication);
+      } else if (await canLaunchUrl(appleMapsUrl)) {
+        // Fallback sur Apple Maps
+        await launchUrl(appleMapsUrl, mode: LaunchMode.externalApplication);
+      } else {
+        // Si aucune application n'est disponible, ouvrir dans le navigateur
+        final webUrl = Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng');
+        await launchUrl(webUrl, mode: LaunchMode.externalApplication);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Impossible d\'ouvrir l\'application de navigation: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -239,6 +274,23 @@ class _LocationViewerState extends State<LocationViewer> {
                 'Coordonnées : ${_location!.latitude.toStringAsFixed(6)}, ${_location!.longitude.toStringAsFixed(6)}',
                 style: TextStyle(fontSize: 12, color: Colors.blue.shade700),
               ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => _openDirections(),
+                    icon: const Icon(Icons.directions),
+                    label: const Text('Démarrer l\'itinéraire'),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      backgroundColor: Colors.blue.shade600,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
           const SizedBox(height: 16),

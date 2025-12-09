@@ -129,6 +129,9 @@ class _LocationPickerState extends State<LocationPicker> {
   Future<void> _onPlaceSelected(Prediction prediction) async {
     if (_apiKey == null || _apiKey!.isEmpty || prediction.placeId == null) return;
 
+    // Fermer le clavier
+    FocusScope.of(context).unfocus();
+
     setState(() {
       _isLoadingPlace = true;
     });
@@ -230,6 +233,9 @@ class _LocationPickerState extends State<LocationPicker> {
   }
 
   void _onMapTap(LatLng location) {
+    // Fermer le clavier si ouvert
+    FocusScope.of(context).unfocus();
+    
     setState(() {
       _selectedLocation = location;
     });
@@ -328,10 +334,12 @@ class _LocationPickerState extends State<LocationPicker> {
               countries: const ['fr', 'ca'],
               isLatLngRequired: true,
               getPlaceDetailWithLatLng: (prediction) {
+                FocusScope.of(context).unfocus();
                 _onPlaceSelected(prediction);
               },
               itemClick: (prediction) {
                 _searchController.text = prediction.description ?? '';
+                FocusScope.of(context).unfocus();
                 _onPlaceSelected(prediction);
               },
               itemBuilder: (context, index, prediction) {
@@ -514,6 +522,9 @@ class _LocationPickerState extends State<LocationPicker> {
           const SizedBox(height: 8),
           ElevatedButton(
             onPressed: () {
+              // Fermer le clavier
+              FocusScope.of(context).unfocus();
+              
               widget.onLocationSelected(
                 _addressController.text,
                 _selectedLocation?.latitude,
