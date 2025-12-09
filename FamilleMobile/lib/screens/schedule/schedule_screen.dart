@@ -1339,40 +1339,41 @@ class _ScheduleCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        schedule.title,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    if (hasOverlap)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.red.shade200,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: const Text(
-                          '⚠️ Conflit',
-                          style: TextStyle(fontSize: 10, color: Colors.red),
-                        ),
-                      )
-                    else if (hasBackToBack)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.shade200,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: const Text(
-                          '🚗 Transport',
-                          style: TextStyle(fontSize: 10, color: Colors.orange),
-                        ),
-                      ),
-                  ],
+                Text(
+                  schedule.title,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
+                if (hasOverlap || hasBackToBack) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      if (hasOverlap)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade200,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            '⚠️ Conflit',
+                            style: TextStyle(fontSize: 10, color: Colors.red),
+                          ),
+                        )
+                      else if (hasBackToBack)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.shade200,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            '🚗 Transport',
+                            style: TextStyle(fontSize: 10, color: Colors.orange),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
                 if (memberName != null) ...[
                   const SizedBox(height: 4),
                   Text(
@@ -1418,25 +1419,38 @@ class _ScheduleCard extends StatelessWidget {
                     ],
                   ),
                 ],
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    if (onEdit != null)
+                      IconButton(
+                        icon: const Icon(Icons.edit, color: Colors.blue),
+                        onPressed: onEdit,
+                        tooltip: 'Modifier',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 32,
+                          minHeight: 32,
+                        ),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    if (canDelete)
+                      IconButton(
+                        icon: const Icon(Icons.delete, color: Colors.red),
+                        onPressed: onDelete,
+                        tooltip: 'Supprimer',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 32,
+                          minHeight: 32,
+                        ),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                  ],
+                ),
               ],
             ),
-          ),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (onEdit != null)
-                IconButton(
-                  icon: const Icon(Icons.edit, color: Colors.blue),
-                  onPressed: onEdit,
-                  tooltip: 'Modifier',
-                ),
-              if (canDelete)
-                IconButton(
-                  icon: const Icon(Icons.delete, color: Colors.red),
-                  onPressed: onDelete,
-                  tooltip: 'Supprimer',
-                ),
-            ],
           ),
         ],
       ),
