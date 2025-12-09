@@ -86,7 +86,9 @@ class _TasksScreenContentState extends State<_TasksScreenContent> {
                 widget.familyId,
                 widget.familyMember.id,
                 authProvider.user!.id,
-                status: provider.statusFilter == 'all' ? null : provider.statusFilter,
+                status: provider.statusFilter == 'all'
+                    ? null
+                    : provider.statusFilter,
               );
             },
             child: SingleChildScrollView(
@@ -121,7 +123,8 @@ class _TasksScreenContentState extends State<_TasksScreenContent> {
                           onTap: () {
                             final authProvider = context.read<AuthProvider>();
                             provider.setStatusFilter('all');
-                            provider.loadTasks(widget.familyId, widget.familyMember.id, authProvider.user!.id);
+                            provider.loadTasks(widget.familyId,
+                                widget.familyMember.id, authProvider.user!.id);
                           },
                         ),
                         const SizedBox(width: 8),
@@ -131,7 +134,9 @@ class _TasksScreenContentState extends State<_TasksScreenContent> {
                           onTap: () {
                             final authProvider = context.read<AuthProvider>();
                             provider.setStatusFilter('todo');
-                            provider.loadTasks(widget.familyId, widget.familyMember.id, authProvider.user!.id, status: 'todo');
+                            provider.loadTasks(widget.familyId,
+                                widget.familyMember.id, authProvider.user!.id,
+                                status: 'todo');
                           },
                         ),
                         const SizedBox(width: 8),
@@ -141,7 +146,9 @@ class _TasksScreenContentState extends State<_TasksScreenContent> {
                           onTap: () {
                             final authProvider = context.read<AuthProvider>();
                             provider.setStatusFilter('completed');
-                            provider.loadTasks(widget.familyId, widget.familyMember.id, authProvider.user!.id, status: 'completed');
+                            provider.loadTasks(widget.familyId,
+                                widget.familyMember.id, authProvider.user!.id,
+                                status: 'completed');
                           },
                         ),
                       ],
@@ -197,9 +204,12 @@ class _TasksScreenContentState extends State<_TasksScreenContent> {
                           task: task,
                           familyMembers: widget.familyMembers,
                           isParent: widget.isParent,
-                          onStatusUpdate: (status) => provider.updateTaskStatus(task.id, status),
-                          onDelete: () => _deleteTask(context, provider, task.id),
-                          onEdit: () => _showEditTaskModal(context, provider, task),
+                          onStatusUpdate: (status) =>
+                              provider.updateTaskStatus(task.id, status),
+                          onDelete: () =>
+                              _deleteTask(context, provider, task.id),
+                          onEdit: () =>
+                              _showEditTaskModal(context, provider, task),
                         )),
                 ],
               ),
@@ -221,7 +231,8 @@ class _TasksScreenContentState extends State<_TasksScreenContent> {
     }
   }
 
-  void _showEditTaskModal(BuildContext context, TasksProvider provider, Task task) {
+  void _showEditTaskModal(
+      BuildContext context, TasksProvider provider, Task task) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -247,7 +258,8 @@ class _TasksScreenContentState extends State<_TasksScreenContent> {
     );
   }
 
-  Future<void> _deleteTask(BuildContext context, TasksProvider provider, String taskId) async {
+  Future<void> _deleteTask(
+      BuildContext context, TasksProvider provider, String taskId) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -457,13 +469,16 @@ class _CreateTaskFormState extends State<_CreateTaskForm> {
                   ),
                   ...widget.familyMembers.map((member) {
                     final authProvider = context.read<AuthProvider>();
-                    final isCurrentUser = member.userId == authProvider.user?.id;
+                    final isCurrentUser =
+                        member.userId == authProvider.user?.id;
                     return DropdownMenuItem(
                       value: member.id,
                       child: Text(
                         isCurrentUser
                             ? 'Vous'
-                            : member.name ?? member.email ?? 'Membre ${member.id.substring(0, 8)}',
+                            : member.name ??
+                                member.email ??
+                                'Membre ${member.id.substring(0, 8)}',
                         overflow: TextOverflow.ellipsis,
                       ),
                     );
@@ -558,11 +573,11 @@ class _TaskCard extends StatelessWidget {
         ? familyMembers.firstWhere((m) => m.id == memberId)
         : null;
     if (member == null) return 'Membre inconnu';
-    
+
     if (currentUserId != null && member.userId == currentUserId) {
       return 'Vous';
     }
-    
+
     if (member.name != null) return member.name!;
     if (member.email != null) return member.email!;
     return 'Membre ${member.id.substring(0, 8)}';
@@ -576,7 +591,6 @@ class _TaskCard extends StatelessWidget {
         return Colors.orange;
     }
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -627,13 +641,13 @@ class _TaskCard extends StatelessWidget {
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
-                                  decoration: task.status == TaskStatus.completed
-                                      ? TextDecoration.lineThrough
-                                      : null,
+                                  decoration:
+                                      task.status == TaskStatus.completed
+                                          ? TextDecoration.lineThrough
+                                          : null,
                                 ),
                               ),
                             ),
-                            
                             if (task.status != TaskStatus.completed)
                               IconButton(
                                 icon: const Icon(Icons.edit, size: 18),
@@ -670,7 +684,8 @@ class _TaskCard extends StatelessWidget {
                           children: [
                             Chip(
                               label: Text(task.priority.displayName),
-                              backgroundColor: task.priority.color.withOpacity(0.2),
+                              backgroundColor:
+                                  task.priority.color.withOpacity(0.2),
                               labelStyle: TextStyle(
                                 color: task.priority.color,
                                 fontSize: 12,
@@ -680,11 +695,13 @@ class _TaskCard extends StatelessWidget {
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.person, size: 14, color: Colors.grey[600]),
+                                Icon(Icons.person,
+                                    size: 14, color: Colors.grey[600]),
                                 const SizedBox(width: 4),
                                 Consumer<AuthProvider>(
                                   builder: (context, authProvider, _) => Text(
-                                    _getMemberName(task.assignedTo, authProvider.user?.id),
+                                    _getMemberName(
+                                        task.assignedTo, authProvider.user?.id),
                                     style: TextStyle(
                                       fontSize: 12,
                                       color: Colors.grey[700],
@@ -697,13 +714,17 @@ class _TaskCard extends StatelessWidget {
                               Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(Icons.calendar_today, size: 14, color: Colors.grey[600]),
+                                  Icon(Icons.calendar_today,
+                                      size: 14, color: Colors.grey[600]),
                                   const SizedBox(width: 4),
                                   Text(
                                     '${task.dueDate!.day}/${task.dueDate!.month}/${task.dueDate!.year}',
                                     style: TextStyle(
                                       fontSize: 12,
-                                      color: task.dueDate!.isBefore(DateTime.now()) && task.status != TaskStatus.completed
+                                      color: task.dueDate!
+                                                  .isBefore(DateTime.now()) &&
+                                              task.status !=
+                                                  TaskStatus.completed
                                           ? Colors.red
                                           : Colors.grey[700],
                                     ),
@@ -715,7 +736,6 @@ class _TaskCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  
                 ],
               ),
             ],
@@ -754,7 +774,8 @@ class _EditTaskModalState extends State<_EditTaskModal> {
   void initState() {
     super.initState();
     _titleController = TextEditingController(text: widget.task.title);
-    _descriptionController = TextEditingController(text: widget.task.description ?? '');
+    _descriptionController =
+        TextEditingController(text: widget.task.description ?? '');
     _assignedTo = widget.task.assignedTo;
     _dueDate = widget.task.dueDate;
     _priority = widget.task.priority.toString();
@@ -838,127 +859,130 @@ class _EditTaskModalState extends State<_EditTaskModal> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Modifier la tâche',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _titleController,
-              decoration: const InputDecoration(
-                labelText: 'Titre *',
-                border: OutlineInputBorder(),
-                hintText: 'Faire les courses, Rendre devoir, etc.',
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Modifier la tâche',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
               ),
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Veuillez entrer un titre';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _descriptionController,
-              decoration: const InputDecoration(
-                labelText: 'Description (optionnel)',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 3,
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              value: _assignedTo,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Assigner à',
-                border: OutlineInputBorder(),
-              ),
-              items: [
-                const DropdownMenuItem(
-                  value: null,
-                  child: Text('Non assigné'),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _titleController,
+                decoration: const InputDecoration(
+                  labelText: 'Titre *',
+                  border: OutlineInputBorder(),
+                  hintText: 'Faire les courses, Rendre devoir, etc.',
                 ),
-                ...widget.familyMembers.map((member) {
-                  final isCurrentUser = member.userId == authProvider.user?.id;
-                  return DropdownMenuItem(
-                    value: member.id,
-                    child: Text(
-                      isCurrentUser
-                          ? 'Vous'
-                          : member.name ?? member.email ?? 'Membre ${member.id.substring(0, 8)}',
-                      overflow: TextOverflow.ellipsis,
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Veuillez entrer un titre';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _descriptionController,
+                decoration: const InputDecoration(
+                  labelText: 'Description (optionnel)',
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: 3,
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: _assignedTo,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Assigner à',
+                  border: OutlineInputBorder(),
+                ),
+                items: [
+                  const DropdownMenuItem(
+                    value: null,
+                    child: Text('Non assigné'),
+                  ),
+                  ...widget.familyMembers.map((member) {
+                    final isCurrentUser =
+                        member.userId == authProvider.user?.id;
+                    return DropdownMenuItem(
+                      value: member.id,
+                      child: Text(
+                        isCurrentUser
+                            ? 'Vous'
+                            : member.name ??
+                                member.email ??
+                                'Membre ${member.id.substring(0, 8)}',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    );
+                  }),
+                ],
+                onChanged: (value) => setState(() => _assignedTo = value),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: _priority ?? 'medium',
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Priorité',
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'low', child: Text('Basse')),
+                  DropdownMenuItem(value: 'medium', child: Text('Moyenne')),
+                  DropdownMenuItem(value: 'high', child: Text('Haute')),
+                ],
+                onChanged: (value) => setState(() => _priority = value),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: _selectDueDate,
+                icon: const Icon(Icons.calendar_today),
+                label: Text(
+                  _dueDate == null
+                      ? 'Date d\'échéance (optionnel)'
+                      : '${_dueDate!.day}/${_dueDate!.month}/${_dueDate!.year}',
+                ),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _isLoading ? null : _updateTask,
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                      child: _isLoading
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Enregistrer'),
                     ),
-                  );
-                }),
-              ],
-              onChanged: (value) => setState(() => _assignedTo = value),
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              value: _priority ?? 'medium',
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Priorité',
-                border: OutlineInputBorder(),
-              ),
-              items: const [
-                DropdownMenuItem(value: 'low', child: Text('Basse')),
-                DropdownMenuItem(value: 'medium', child: Text('Moyenne')),
-                DropdownMenuItem(value: 'high', child: Text('Haute')),
-              ],
-              onChanged: (value) => setState(() => _priority = value),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: _selectDueDate,
-              icon: const Icon(Icons.calendar_today),
-              label: Text(
-                _dueDate == null
-                    ? 'Date d\'échéance (optionnel)'
-                    : '${_dueDate!.day}/${_dueDate!.month}/${_dueDate!.year}',
-              ),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _updateTask,
-                    style: ElevatedButton.styleFrom(
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
-                    child: _isLoading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Enregistrer'),
+                    child: const Text('Annuler'),
                   ),
-                ),
-                const SizedBox(width: 8),
-                OutlinedButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                  ),
-                  child: const Text('Annuler'),
-                ),
-              ],
-            ),
+                ],
+              ),
             ],
           ),
         ),
