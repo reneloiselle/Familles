@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { Plus, Calendar as CalendarIcon, Clock, Settings, MapPin, X, Edit2, Trash2, ChevronLeft, ChevronRight, User as UserIcon } from 'lucide-react'
+import { Plus, Calendar as CalendarIcon, Clock, Settings, MapPin, Map, X, Edit2, Trash2, ChevronLeft, ChevronRight, User as UserIcon } from 'lucide-react'
 import { User } from '@supabase/supabase-js'
 import { CalendarSubscriptionManager } from './CalendarSubscriptionManager'
 import { LocationPicker } from './LocationPicker'
@@ -68,6 +68,7 @@ export function ScheduleManagement({
   const [showLocationPicker, setShowLocationPicker] = useState(false)
   const [showEditLocationPicker, setShowEditLocationPicker] = useState(false)
   const [viewingLocation, setViewingLocation] = useState<string | null>(null)
+  const [viewingLocationScheduleId, setViewingLocationScheduleId] = useState<string | null>(null)
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [selectedDate, setSelectedDate] = useState(initialDate)
   const [view, setView] = useState(initialView)
@@ -1010,23 +1011,25 @@ export function ScheduleManagement({
           ) : (
             Object.entries(groupedSchedules)
               .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
-              .map(([date, daySchedules]: [string, Schedule[]]) => (
-                <div key={date} className="card">
-                  <h3 className="text-lg font-semibold mb-4 pb-2 border-b border-gray-200">
-                    {new Date(date).toLocaleDateString('fr-FR', {
-                      weekday: 'long',
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric'
-                    })}
-                  </h3>
-                  <div className="space-y-3">
-                    {daySchedules.map((schedule) => {
-                      const isExternal = !!schedule.subscription_id
-                      const color = isExternal ? getSubscriptionColor(schedule.subscription_id) : undefined
-                      const overlappingIds = getOverlappingScheduleIds(schedule, daySchedules)
-                      const hasOverlap = overlappingIds.length > 0
-                      const backToBackIds = getBackToBackScheduleIds(schedule, daySchedules)
+              .map(([date, daySchedules]) => {
+                const schedules = daySchedules as Schedule[]
+                return (
+                  <div key={date} className="card">
+                    <h3 className="text-lg font-semibold mb-4 pb-2 border-b border-gray-200">
+                      {new Date(date).toLocaleDateString('fr-FR', {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      })}
+                    </h3>
+                    <div className="space-y-3">
+                      {schedules.map((schedule) => {
+                        const isExternal = !!schedule.subscription_id
+                        const color = isExternal ? getSubscriptionColor(schedule.subscription_id) : undefined
+                        const overlappingIds = getOverlappingScheduleIds(schedule, schedules)
+                        const hasOverlap = overlappingIds.length > 0
+                        const backToBackIds = getBackToBackScheduleIds(schedule, schedules)
                       const hasBackToBack = backToBackIds.length > 0 && !hasOverlap
 
                       return (
@@ -1080,11 +1083,14 @@ export function ScheduleManagement({
                                   <span>{schedule.location}</span>
                                   {isExternal && (
                                     <button
-                                      onClick={() => setViewingLocation(schedule.location || '')}
-                                      className="ml-2 text-blue-600 hover:text-blue-800 text-xs underline"
+                                      onClick={() => {
+                                        setViewingLocation(schedule.location || '')
+                                        setViewingLocationScheduleId(schedule.id)
+                                      }}
+                                      className="ml-2 text-blue-600 hover:text-blue-800 p-1.5 rounded-lg hover:bg-blue-50 transition-all hover:scale-110 active:scale-95"
                                       title="Voir sur la carte"
                                     >
-                                      Voir sur la carte
+                                      <Map className="w-5 h-5" strokeWidth={2} />
                                     </button>
                                   )}
                                 </p>
@@ -1112,10 +1118,11 @@ export function ScheduleManagement({
                           </div>
                         </div>
                       )
-                    })}
+                      })}
+                    </div>
                   </div>
-                </div>
-              ))
+                )
+              })
           )}
         </div>
       )}
@@ -1188,11 +1195,14 @@ export function ScheduleManagement({
                                 <span>{schedule.location}</span>
                                 {schedule.subscription_id && (
                                   <button
-                                    onClick={() => setViewingLocation(schedule.location || '')}
-                                    className="ml-2 text-blue-600 hover:text-blue-800 text-xs underline"
+                                    onClick={() => {
+                                      setViewingLocation(schedule.location || '')
+                                      setViewingLocationScheduleId(schedule.id)
+                                    }}
+                                    className="ml-2 text-blue-600 hover:text-blue-800 p-1.5 rounded-lg hover:bg-blue-50 transition-all hover:scale-110 active:scale-95"
                                     title="Voir sur la carte"
                                   >
-                                    Voir sur la carte
+                                    <Map className="w-5 h-5" strokeWidth={2} />
                                   </button>
                                 )}
                               </p>
@@ -1354,7 +1364,41 @@ export function ScheduleManagement({
       {viewingLocation && (
         <LocationViewer
           address={viewingLocation}
-          onClose={() => setViewingLocation(null)}
+          onClose={() => {
+            setViewingLocation(null)
+            setViewingLocationScheduleId(null)
+          }}
+          onSave={async (newAddress) => {
+            if (!viewingLocationScheduleId) return
+
+            setError('')
+            setLoading(true)
+
+            try {
+              const { error } = await supabase
+                .from('schedules')
+                .update({ location: newAddress })
+                .eq('id', viewingLocationScheduleId)
+
+              if (error) throw error
+
+              // Mettre à jour l'horaire localement
+              setLocalSchedules((prev) =>
+                prev.map((s) =>
+                  s.id === viewingLocationScheduleId ? { ...s, location: newAddress } : s
+                )
+              )
+
+              // Fermer le popup
+              setViewingLocation(null)
+              setViewingLocationScheduleId(null)
+            } catch (err: any) {
+              setError(err.message || 'Erreur lors de la mise à jour de la localisation')
+            } finally {
+              setLoading(false)
+            }
+          }}
+          canSave={!!viewingLocationScheduleId}
         />
       )}
     </div>
