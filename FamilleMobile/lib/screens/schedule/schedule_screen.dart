@@ -8,6 +8,8 @@ import '../../providers/auth_provider.dart';
 import '../../models/schedule.dart';
 import '../../models/family.dart';
 import '../../widgets/family_calendar_view.dart';
+import '../../widgets/location_picker.dart';
+import '../../widgets/location_viewer.dart';
 
 class ScheduleScreen extends StatelessWidget {
   const ScheduleScreen({super.key});
@@ -391,6 +393,7 @@ class _ScheduleScreenContentState extends State<_ScheduleScreenContent> {
                       provider: provider,
                       showMemberName: provider.view == 'family',
                       familyMembers: widget.familyMembers,
+                      onLocationTap: (address) => _showLocationViewer(context, address),
                     ),
                 ],
               ),
@@ -531,6 +534,18 @@ class _ScheduleScreenContentState extends State<_ScheduleScreenContent> {
             },
           ),
         ),
+      ),
+    );
+  }
+
+  void _showLocationViewer(BuildContext context, String address) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (modalContext) => LocationViewer(
+        address: address,
+        onClose: () => Navigator.pop(modalContext),
       ),
     );
   }
@@ -720,6 +735,23 @@ class _ScheduleModalState extends State<_ScheduleModal> {
     }
   }
 
+  void _showLocationPicker(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (modalContext) => LocationPicker(
+        initialValue: _locationController.text,
+        onLocationSelected: (address, lat, lng) {
+          setState(() {
+            _locationController.text = address;
+          });
+        },
+        onClose: () => Navigator.pop(modalContext),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final authProvider = context.read<AuthProvider>();
@@ -799,13 +831,37 @@ class _ScheduleModalState extends State<_ScheduleModal> {
                 maxLines: 3,
               ),
               const SizedBox(height: 12),
-              TextFormField(
-                controller: _locationController,
-                decoration: const InputDecoration(
-                  labelText: 'Localisation (optionnel)',
-                  border: OutlineInputBorder(),
-                  hintText: 'Adresse, lieu, etc.',
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _locationController,
+                      decoration: const InputDecoration(
+                        labelText: 'Localisation (optionnel)',
+                        border: OutlineInputBorder(),
+                        hintText: 'Adresse, lieu, etc.',
+                      ),
+                      readOnly: true,
+                      onTap: () => _showLocationPicker(context),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: const Icon(Icons.map),
+                    onPressed: () => _showLocationPicker(context),
+                    tooltip: 'Sélectionner sur la carte',
+                  ),
+                  if (_locationController.text.isNotEmpty)
+                    IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () {
+                        setState(() {
+                          _locationController.clear();
+                        });
+                      },
+                      tooltip: 'Effacer',
+                    ),
+                ],
               ),
               const SizedBox(height: 12),
               Row(
@@ -998,6 +1054,23 @@ class _CreateScheduleFormState extends State<_CreateScheduleForm> {
     }
   }
 
+  void _showLocationPicker(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (modalContext) => LocationPicker(
+        initialValue: _locationController.text,
+        onLocationSelected: (address, lat, lng) {
+          setState(() {
+            _locationController.text = address;
+          });
+        },
+        onClose: () => Navigator.pop(modalContext),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final authProvider = context.read<AuthProvider>();
@@ -1058,13 +1131,37 @@ class _CreateScheduleFormState extends State<_CreateScheduleForm> {
                 maxLines: 3,
               ),
               const SizedBox(height: 12),
-              TextFormField(
-                controller: _locationController,
-                decoration: const InputDecoration(
-                  labelText: 'Localisation (optionnel)',
-                  border: OutlineInputBorder(),
-                  hintText: 'Adresse, lieu, etc.',
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _locationController,
+                      decoration: const InputDecoration(
+                        labelText: 'Localisation (optionnel)',
+                        border: OutlineInputBorder(),
+                        hintText: 'Adresse, lieu, etc.',
+                      ),
+                      readOnly: true,
+                      onTap: () => _showLocationPicker(context),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: const Icon(Icons.map),
+                    onPressed: () => _showLocationPicker(context),
+                    tooltip: 'Sélectionner sur la carte',
+                  ),
+                  if (_locationController.text.isNotEmpty)
+                    IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () {
+                        setState(() {
+                          _locationController.clear();
+                        });
+                      },
+                      tooltip: 'Effacer',
+                    ),
+                ],
               ),
               const SizedBox(height: 12),
               Row(
@@ -1147,6 +1244,7 @@ class _PersonalView extends StatelessWidget {
   final ScheduleProvider? provider;
   final bool showMemberName;
   final List<FamilyMember>? familyMembers;
+  final Function(String)? onLocationTap;
 
   const _PersonalView({
     required this.schedules,
@@ -1156,6 +1254,7 @@ class _PersonalView extends StatelessWidget {
     this.provider,
     this.showMemberName = false,
     this.familyMembers,
+    this.onLocationTap,
   });
 
   @override
@@ -1205,6 +1304,7 @@ class _PersonalView extends StatelessWidget {
                 provider: provider,
                 showMemberName: showMemberName,
                 familyMembers: familyMembers,
+                onLocationTap: onLocationTap,
               ))
           .toList(),
     );
@@ -1219,6 +1319,7 @@ class _DayScheduleCard extends StatelessWidget {
   final ScheduleProvider? provider;
   final bool showMemberName;
   final List<FamilyMember>? familyMembers;
+  final Function(String)? onLocationTap;
 
   const _DayScheduleCard({
     required this.date,
@@ -1228,6 +1329,7 @@ class _DayScheduleCard extends StatelessWidget {
     this.provider,
     this.showMemberName = false,
     this.familyMembers,
+    this.onLocationTap,
   });
 
   @override
@@ -1282,6 +1384,7 @@ class _DayScheduleCard extends StatelessWidget {
                   onEdit: () => onEdit(schedule),
                   hasOverlap: hasOverlap,
                   hasBackToBack: hasBackToBack,
+                  onLocationTap: onLocationTap,
                 ),
               );
             }),
@@ -1300,6 +1403,7 @@ class _ScheduleCard extends StatelessWidget {
   final VoidCallback? onEdit;
   final bool hasOverlap;
   final bool hasBackToBack;
+  final Function(String)? onLocationTap;
 
   const _ScheduleCard({
     required this.schedule,
@@ -1309,6 +1413,7 @@ class _ScheduleCard extends StatelessWidget {
     this.onEdit,
     this.hasOverlap = false,
     this.hasBackToBack = false,
+    this.onLocationTap,
   });
 
   @override
@@ -1411,9 +1516,18 @@ class _ScheduleCard extends StatelessWidget {
                       Icon(Icons.location_on, size: 14, color: Colors.grey[600]),
                       const SizedBox(width: 4),
                       Expanded(
-                        child: Text(
-                          schedule.location!,
-                          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                        child: InkWell(
+                          onTap: onLocationTap != null
+                              ? () => onLocationTap!(schedule.location!)
+                              : null,
+                          child: Text(
+                            schedule.location!,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.blue[700],
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
                         ),
                       ),
                     ],

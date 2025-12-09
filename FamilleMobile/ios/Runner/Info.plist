@@ -49,5 +49,11 @@
 	<string>Cette application a besoin d'accéder au microphone pour la dictée vocale.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Cette application a besoin d'accéder à la reconnaissance vocale pour convertir votre voix en texte.</string>
+	<key>GMSApiKey</key>
+	<string>AIzaSyCXQZuzzjNFl9HGP0P3Vb1XEngPK3cKnrk</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Cette application a besoin d'accéder à votre localisation pour afficher les cartes et trouver des adresses.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>Cette application a besoin d'accéder à votre localisation pour afficher les cartes et trouver des adresses.</string>
 </dict>
 </plist>
