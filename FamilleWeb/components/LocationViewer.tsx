@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react'
 import { useLoadScript, GoogleMap, Marker, Autocomplete } from '@react-google-maps/api'
-import { MapPin, X, Search } from 'lucide-react'
+import { MapPin, X, Search, Navigation } from 'lucide-react'
 
 const libraries: ('places')[] = ['places']
 
@@ -305,6 +305,18 @@ export function LocationViewer({ address, onClose, onSave, canSave = false }: Lo
     }
   }, [])
 
+  // Ouvrir l'itinéraire dans Google Maps
+  const openDirections = () => {
+    if (!location) return
+
+    const lat = location.lat
+    const lng = location.lng
+    
+    // Ouvrir Google Maps avec l'itinéraire
+    const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`
+    window.open(googleMapsUrl, '_blank', 'noopener,noreferrer')
+  }
+
   if (!apiKey) {
     return (
       <>
@@ -587,13 +599,19 @@ export function LocationViewer({ address, onClose, onSave, canSave = false }: Lo
                         </button>
                       </div>
                     )}
-                                        <div className="p-3 bg-blue-50 border border-blue-200 rounded text-sm">
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded text-sm">
                       <p className="font-medium text-blue-900 mb-1">Coordonnées :</p>
                       <p className="text-blue-700">
                         {location.lat.toFixed(6)}, {location.lng.toFixed(6)}
                       </p>
                     </div>
-
+                    <button
+                      onClick={openDirections}
+                      className="w-full btn btn-primary flex items-center justify-center gap-2 py-2"
+                    >
+                      <Navigation className="w-4 h-4" />
+                      Démarrer l'itinéraire
+                    </button>
                   </div>
                 )}
 
