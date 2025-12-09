@@ -99,7 +99,7 @@ class _TasksScreenContentState extends State<_TasksScreenContent> {
                 children: [
                   if (provider.error != null)
                     Container(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(24),
                       margin: const EdgeInsets.only(bottom: 16),
                       decoration: BoxDecoration(
                         color: Colors.red.shade50,
@@ -592,13 +592,46 @@ class _TaskCard extends StatelessWidget {
     }
   }
 
+  String _getRelativeDateText(DateTime dueDate, bool isCompleted) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final due = DateTime(dueDate.year, dueDate.month, dueDate.day);
+    final difference = due.difference(today).inDays;
+
+    if (isCompleted) {
+      if (difference == 0) {
+        return 'Aujourd\'hui';
+      } else if (difference == 1) {
+        return 'Demain';
+      } else if (difference > 1) {
+        return 'Dans $difference jours';
+      } else if (difference == -1) {
+        return 'Hier';
+      } else {
+        return 'Dépassé de ${-difference} jour${-difference > 1 ? 's' : ''}';
+      }
+    } else {
+      if (difference == 0) {
+        return 'Aujourd\'hui';
+      } else if (difference == 1) {
+        return 'Demain';
+      } else if (difference > 1) {
+        return 'Dans $difference jours';
+      } else if (difference == -1) {
+        return 'Dépassé d\'1 jour';
+      } else {
+        return 'Dépassé de ${-difference} jour${-difference > 1 ? 's' : ''}';
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
     final canDelete = isParent || task.createdBy == authProvider.user?.id;
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 6),
       child: Container(
         decoration: BoxDecoration(
           border: Border(
@@ -607,6 +640,7 @@ class _TaskCard extends StatelessWidget {
         ),
         child: Padding(
           padding: const EdgeInsets.all(2),
+          
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -632,43 +666,15 @@ class _TaskCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                task.title,
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  decoration:
-                                      task.status == TaskStatus.completed
-                                          ? TextDecoration.lineThrough
-                                          : null,
-                                ),
-                              ),
-                            ),
-                            if (task.status != TaskStatus.completed)
-                              IconButton(
-                                icon: const Icon(Icons.edit, size: 18),
-                                onPressed: onEdit,
-                                tooltip: 'Modifier',
-                                color: Colors.blue,
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(),
-                                visualDensity: VisualDensity.compact,
-                              ),
-                            if (canDelete)
-                              IconButton(
-                                icon: const Icon(Icons.delete, size: 18),
-                                onPressed: onDelete,
-                                tooltip: 'Supprimer',
-                                color: Colors.red,
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(),
-                                visualDensity: VisualDensity.compact,
-                              ),
-                          ],
+                        Text(
+                          task.title,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            decoration: task.status == TaskStatus.completed
+                                ? TextDecoration.lineThrough
+                                : null,
+                          ),
                         ),
                         if (task.description != null) ...[
                           const SizedBox(height: 8),
@@ -682,16 +688,6 @@ class _TaskCard extends StatelessWidget {
                           spacing: 8,
                           runSpacing: 4,
                           children: [
-                            Chip(
-                              label: Text(task.priority.displayName),
-                              backgroundColor:
-                                  task.priority.color.withOpacity(0.2),
-                              labelStyle: TextStyle(
-                                color: task.priority.color,
-                                fontSize: 12,
-                              ),
-                              padding: EdgeInsets.zero,
-                            ),
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -718,7 +714,7 @@ class _TaskCard extends StatelessWidget {
                                       size: 14, color: Colors.grey[600]),
                                   const SizedBox(width: 4),
                                   Text(
-                                    '${task.dueDate!.day}/${task.dueDate!.month}/${task.dueDate!.year}',
+                                    '${task.dueDate!.day}/${task.dueDate!.month}/${task.dueDate!.year} - ${_getRelativeDateText(task.dueDate!, task.status == TaskStatus.completed)}',
                                     style: TextStyle(
                                       fontSize: 12,
                                       color: task.dueDate!
@@ -731,6 +727,53 @@ class _TaskCard extends StatelessWidget {
                                   ),
                                 ],
                               ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Chip(
+                              label: Text(task.priority.displayName),
+                              backgroundColor:
+                                  task.priority.color.withOpacity(0.2),
+                              labelStyle: TextStyle(
+                                color: task.priority.color,
+                                fontSize: 12,
+                              ),
+                              padding: EdgeInsets.zero,
+                            ),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (task.status != TaskStatus.completed)
+                                  IconButton(
+                                    icon: const Icon(Icons.edit, size: 18),
+                                    onPressed: onEdit,
+                                    tooltip: 'Modifier',
+                                    color: Colors.blue,
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(
+                                      minWidth: 32,
+                                      minHeight: 32,
+                                    ),
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                if (canDelete)
+                                  IconButton(
+                                    icon: const Icon(Icons.delete, size: 18),
+                                    onPressed: onDelete,
+                                    tooltip: 'Supprimer',
+                                    color: Colors.red,
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(
+                                      minWidth: 32,
+                                      minHeight: 32,
+                                    ),
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                              ],
+                            ),
                           ],
                         ),
                       ],
@@ -848,9 +891,9 @@ class _EditTaskModalState extends State<_EditTaskModal> {
       ),
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewInsets.bottom,
-        left: 16,
-        right: 16,
-        top: 16,
+        left: 8,
+        right: 8,
+        top: 8,
       ),
       child: Form(
         key: _formKey,

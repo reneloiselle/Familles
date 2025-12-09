@@ -449,6 +449,40 @@ export function TaskManagement({
     }
   }
 
+  const getRelativeDateText = (dueDate: string, isCompleted: boolean) => {
+    const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const due = new Date(dueDate)
+    const dueDateOnly = new Date(due.getFullYear(), due.getMonth(), due.getDate())
+    const difference = Math.floor((dueDateOnly.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+
+    if (isCompleted) {
+      if (difference === 0) {
+        return 'Aujourd\'hui'
+      } else if (difference === 1) {
+        return 'Demain'
+      } else if (difference > 1) {
+        return `Dans ${difference} jours`
+      } else if (difference === -1) {
+        return 'Hier'
+      } else {
+        return `Dépassé de ${-difference} jour${-difference > 1 ? 's' : ''}`
+      }
+    } else {
+      if (difference === 0) {
+        return 'Aujourd\'hui'
+      } else if (difference === 1) {
+        return 'Demain'
+      } else if (difference > 1) {
+        return `Dans ${difference} jours`
+      } else if (difference === -1) {
+        return 'Dépassé d\'1 jour'
+      } else {
+        return `Dépassé de ${-difference} jour${-difference > 1 ? 's' : ''}`
+      }
+    }
+  }
+
   return (
     <div className="space-y-6">
       {error && (
@@ -826,8 +860,12 @@ export function TaskManagement({
                     </span>
                     {task.due_date && (
                       <span>
-                        Échéance: <strong>
-                          {new Date(task.due_date).toLocaleDateString('fr-FR')}
+                        Échéance: <strong className={
+                          new Date(task.due_date) < new Date() && task.status !== 'completed'
+                            ? 'text-red-600'
+                            : ''
+                        }>
+                          {new Date(task.due_date).toLocaleDateString('fr-FR')} - {getRelativeDateText(task.due_date, task.status === 'completed')}
                         </strong>
                       </span>
                     )}
