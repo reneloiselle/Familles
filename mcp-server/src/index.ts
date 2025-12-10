@@ -409,7 +409,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             description: description || null,
             assigned_to: assignedTo || null,
             due_date: dueDate || null,
-            status: 'pending',
+            status: 'todo',
             created_by: userId,
           })
           .select()
