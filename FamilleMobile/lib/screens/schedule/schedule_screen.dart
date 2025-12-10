@@ -516,12 +516,13 @@ class _ScheduleScreenContentState extends State<_ScheduleScreenContent> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (modalContext) => ChangeNotifierProvider.value(
-        value: context.read<ScheduleProvider>(),
-        child: Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(modalContext).viewInsets.bottom,
-          ),
+      useSafeArea: false,
+      builder: (modalContext) => Padding(
+        padding: EdgeInsets.only(
+          top: MediaQuery.of(modalContext).padding.top,
+        ),
+        child: ChangeNotifierProvider.value(
+          value: context.read<ScheduleProvider>(),
           child: _ScheduleModal(
             schedule: schedule,
             familyId: widget.familyId,
@@ -600,6 +601,9 @@ class _ScheduleModalState extends State<_ScheduleModal> {
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _locationController = TextEditingController();
+  final _scrollController = ScrollController();
+  final _titleFocusNode = FocusNode();
+  final _descriptionFocusNode = FocusNode();
   String? _selectedMemberId;
   DateTime _selectedDate = DateTime.now();
   TimeOfDay _startTime = const TimeOfDay(hour: 9, minute: 0);
@@ -630,6 +634,33 @@ class _ScheduleModalState extends State<_ScheduleModal> {
       // Mode création
       _selectedMemberId = widget.familyMember.id;
     }
+    
+    // Ajouter des listeners pour scroller automatiquement vers le champ actif
+    _titleFocusNode.addListener(() {
+      if (_titleFocusNode.hasFocus) {
+        _scrollToField(_titleFocusNode);
+      }
+    });
+    
+    _descriptionFocusNode.addListener(() {
+      if (_descriptionFocusNode.hasFocus) {
+        _scrollToField(_descriptionFocusNode);
+      }
+    });
+  }
+
+  void _scrollToField(FocusNode focusNode) {
+    // Attendre un peu pour que le clavier s'ouvre
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (_scrollController.hasClients && focusNode.hasFocus) {
+        // Scroller pour que le champ soit visible au-dessus du clavier
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   @override
@@ -637,6 +668,9 @@ class _ScheduleModalState extends State<_ScheduleModal> {
     _titleController.dispose();
     _descriptionController.dispose();
     _locationController.dispose();
+    _scrollController.dispose();
+    _titleFocusNode.dispose();
+    _descriptionFocusNode.dispose();
     super.dispose();
   }
 
@@ -755,25 +789,36 @@ class _ScheduleModalState extends State<_ScheduleModal> {
   @override
   Widget build(BuildContext context) {
     final authProvider = context.read<AuthProvider>();
+    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final topPadding = MediaQuery.of(context).padding.top;
+    final availableHeight = screenHeight - keyboardHeight - topPadding;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).scaffoldBackgroundColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-        left: 16,
-        right: 16,
-        top: 16,
-      ),
-      child: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+    return Scaffold(
+      resizeToAvoidBottomInset: false,
+      backgroundColor: Colors.transparent,
+      body: Container(
+        height: availableHeight,
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 16,
+        ),
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            controller: _scrollController,
+            padding: EdgeInsets.only(
+              bottom: keyboardHeight + 16,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -809,6 +854,7 @@ class _ScheduleModalState extends State<_ScheduleModal> {
               const SizedBox(height: 12),
               TextFormField(
                 controller: _titleController,
+                focusNode: _titleFocusNode,
                 decoration: const InputDecoration(
                   labelText: 'Titre *',
                   border: OutlineInputBorder(),
@@ -824,11 +870,12 @@ class _ScheduleModalState extends State<_ScheduleModal> {
               const SizedBox(height: 12),
               TextFormField(
                 controller: _descriptionController,
+                focusNode: _descriptionFocusNode,
                 decoration: const InputDecoration(
                   labelText: 'Description (optionnel)',
                   border: OutlineInputBorder(),
                 ),
-                maxLines: 3,
+                maxLines: 1,
               ),
               const SizedBox(height: 12),
               Row(
@@ -932,6 +979,7 @@ class _ScheduleModalState extends State<_ScheduleModal> {
           ),
         ),
       ),
+      ),
     );
   }
 }
@@ -962,6 +1010,9 @@ class _CreateScheduleFormState extends State<_CreateScheduleForm> {
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _locationController = TextEditingController();
+  final _scrollController = ScrollController();
+  final _titleFocusNode = FocusNode();
+  final _descriptionFocusNode = FocusNode();
   String? _selectedMemberId;
   DateTime _selectedDate = DateTime.now();
   TimeOfDay _startTime = const TimeOfDay(hour: 9, minute: 0);
@@ -972,6 +1023,33 @@ class _CreateScheduleFormState extends State<_CreateScheduleForm> {
   void initState() {
     super.initState();
     _selectedMemberId = widget.familyMember.id;
+    
+    // Ajouter des listeners pour scroller automatiquement vers le champ actif
+    _titleFocusNode.addListener(() {
+      if (_titleFocusNode.hasFocus) {
+        _scrollToField(_titleFocusNode);
+      }
+    });
+    
+    _descriptionFocusNode.addListener(() {
+      if (_descriptionFocusNode.hasFocus) {
+        _scrollToField(_descriptionFocusNode);
+      }
+    });
+  }
+
+  void _scrollToField(FocusNode focusNode) {
+    // Attendre un peu pour que le clavier s'ouvre
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (_scrollController.hasClients && focusNode.hasFocus) {
+        // Scroller pour que le champ soit visible au-dessus du clavier
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   @override
@@ -979,6 +1057,9 @@ class _CreateScheduleFormState extends State<_CreateScheduleForm> {
     _titleController.dispose();
     _descriptionController.dispose();
     _locationController.dispose();
+    _scrollController.dispose();
+    _titleFocusNode.dispose();
+    _descriptionFocusNode.dispose();
     super.dispose();
   }
 
@@ -1109,6 +1190,7 @@ class _CreateScheduleFormState extends State<_CreateScheduleForm> {
               const SizedBox(height: 12),
               TextFormField(
                 controller: _titleController,
+                focusNode: _titleFocusNode,
                 decoration: const InputDecoration(
                   labelText: 'Titre *',
                   border: OutlineInputBorder(),
@@ -1124,6 +1206,7 @@ class _CreateScheduleFormState extends State<_CreateScheduleForm> {
               const SizedBox(height: 12),
               TextFormField(
                 controller: _descriptionController,
+                focusNode: _descriptionFocusNode,
                 decoration: const InputDecoration(
                   labelText: 'Description (optionnel)',
                   border: OutlineInputBorder(),

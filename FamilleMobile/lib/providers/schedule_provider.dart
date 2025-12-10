@@ -212,7 +212,10 @@ class ScheduleProvider with ChangeNotifier {
 
     try {
       await _service.deleteSchedule(scheduleId);
-      // Realtime mettra à jour automatiquement _schedules
+      // Supprimer immédiatement de la liste locale pour une mise à jour instantanée
+      _schedules = _schedules.where((schedule) => schedule.id != scheduleId).toList();
+      notifyListeners();
+      // Realtime mettra à jour également pour la synchronisation
     } catch (e) {
       _error = e.toString();
       rethrow;
