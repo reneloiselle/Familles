@@ -11,7 +11,8 @@ import {
   List, 
   LogOut,
   X,
-  User
+  User,
+  Key
 } from 'lucide-react'
 import { useAuth } from '@/app/providers'
 
@@ -26,6 +27,7 @@ const navigationItems = [
   { href: '/dashboard/schedule', icon: Calendar, label: 'Horaires' },
   { href: '/dashboard/tasks', icon: CheckSquare, label: 'Tâches' },
   { href: '/dashboard/lists', icon: List, label: 'Listes' },
+  { href: '/dashboard/api-keys', icon: Key, label: 'Clés API' },
 ]
 
 export function MobileSidebar({ isOpen, onClose }: MobileSidebarProps) {

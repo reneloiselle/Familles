@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useAuth } from '@/app/providers'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { Calendar, Users, CheckSquare, LogOut, Home, List } from 'lucide-react'
+import { Calendar, Users, CheckSquare, LogOut, Home, List, Key } from 'lucide-react'
 
 export function Navbar() {
   const { user, loading } = useAuth()
@@ -48,6 +48,10 @@ export function Navbar() {
             <Link href="/dashboard/lists" className="flex items-center gap-2 text-gray-700 hover:text-primary-600">
               <List className="w-5 h-5" />
               <span>Listes</span>
+            </Link>
+            <Link href="/dashboard/api-keys" className="flex items-center gap-2 text-gray-700 hover:text-primary-600">
+              <Key className="w-5 h-5" />
+              <span>Clés API</span>
             </Link>
             
             <button

@@ -10,6 +10,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { createClient } from '@supabase/supabase-js';
 import * as dotenv from 'dotenv';
+import crypto from 'crypto';
 
 // Charger les variables d'environnement
 dotenv.config();
@@ -17,6 +18,7 @@ dotenv.config();
 // Configuration Supabase
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const MCP_API_KEY = process.env.MCP_API_KEY; // Clé API optionnelle pour authentification par défaut
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error('Erreur: SUPABASE_URL et SUPABASE_SERVICE_ROLE_KEY doivent être définis dans les variables d\'environnement');
@@ -39,8 +41,178 @@ const server = new Server(
   }
 );
 
-// Fonction helper pour obtenir l'utilisateur et la famille
-async function getUserAndFamily(userId: string) {
+// ============================================
+// Fonctions de génération et vérification des clés API
+// ============================================
+
+/**
+ * Génère une nouvelle clé API
+ * Format: fml_<prefix>_<random>
+ */
+function generateApiKey(): { key: string; hash: string; prefix: string } {
+  // Générer le préfixe (8 caractères)
+  const prefix = crypto.randomBytes(6).toString('base64url').substring(0, 8);
+  
+  // Générer la partie aléatoire (32 caractères)
+  const random = crypto.randomBytes(24).toString('base64url').substring(0, 32);
+  
+  // Clé complète
+  const key = `fml_${prefix}_${random}`;
+  
+  // Hash SHA-256 pour stockage sécurisé
+  const hash = crypto.createHash('sha256').update(key).digest('hex');
+  
+  return { key, hash, prefix };
+}
+
+/**
+ * Vérifie le format et calcule le hash d'une clé API
+ */
+function verifyApiKeyFormat(providedKey: string): string | null {
+  // Vérifier le format
+  if (!providedKey.startsWith('fml_') || providedKey.split('_').length !== 3) {
+    return null;
+  }
+  
+  // Calculer le hash
+  const hash = crypto.createHash('sha256').update(providedKey).digest('hex');
+  
+  return hash;
+}
+
+/**
+ * Authentifie une clé API et retourne les informations associées
+ */
+async function authenticateApiKey(apiKey: string): Promise<{
+  isValid: boolean;
+  familyId?: string;
+  scope?: 'family' | 'all';
+  keyId?: string;
+  error?: string;
+}> {
+  const hash = verifyApiKeyFormat(apiKey);
+  if (!hash) {
+    return { isValid: false, error: 'Format de clé API invalide' };
+  }
+  
+  // Chercher la clé dans la base de données
+  const { data: keyData, error } = await supabase
+    .from('mcp_api_keys')
+    .select('id, family_id, scope, is_active, expires_at')
+    .eq('key_hash', hash)
+    .maybeSingle();
+  
+  if (error || !keyData) {
+    return { isValid: false, error: 'Clé API non trouvée' };
+  }
+  
+  // Vérifier si la clé est active
+  if (!keyData.is_active) {
+    return { isValid: false, error: 'Clé API désactivée' };
+  }
+  
+  // Vérifier l'expiration
+  if (keyData.expires_at && new Date(keyData.expires_at) < new Date()) {
+    return { isValid: false, error: 'Clé API expirée' };
+  }
+  
+  // Mettre à jour last_used_at
+  await supabase
+    .from('mcp_api_keys')
+    .update({ last_used_at: new Date().toISOString() })
+    .eq('id', keyData.id);
+  
+  return {
+    isValid: true,
+    familyId: keyData.family_id || undefined,
+    scope: keyData.scope as 'family' | 'all',
+    keyId: keyData.id,
+  };
+}
+
+/**
+ * Obtient l'utilisateur et la famille à partir d'une clé API
+ */
+async function getUserAndFamilyFromApiKey(
+  apiKey: string,
+  requestedUserId?: string
+): Promise<{
+  familyMember?: any;
+  familyId: string;
+  family?: any;
+  scope: 'family' | 'all';
+}> {
+  const auth = await authenticateApiKey(apiKey);
+  
+  if (!auth.isValid) {
+    throw new Error(auth.error || 'Clé API invalide ou expirée');
+  }
+  
+  // Si scope = 'all', permettre l'accès à toutes les familles
+  if (auth.scope === 'all') {
+    if (!requestedUserId) {
+      throw new Error('userId requis pour les clés avec scope "all"');
+    }
+    const result = await getUserAndFamily(requestedUserId);
+    return {
+      ...result,
+      scope: 'all' as const,
+    };
+  }
+  
+  // Si scope = 'family', limiter à la famille de la clé
+  if (auth.scope === 'family') {
+    if (!auth.familyId) {
+      throw new Error('familyId manquant pour la clé API');
+    }
+    
+    const { data: family, error } = await supabase
+      .from('families')
+      .select('*')
+      .eq('id', auth.familyId)
+      .single();
+    
+    if (error || !family) {
+      throw new Error('Famille non trouvée');
+    }
+    
+    // Si userId fourni, vérifier qu'il appartient à cette famille
+    if (requestedUserId) {
+      const { data: member, error: memberError } = await supabase
+        .from('family_members')
+        .select('*, families(*)')
+        .eq('user_id', requestedUserId)
+        .eq('family_id', auth.familyId)
+        .maybeSingle();
+      
+      if (memberError || !member) {
+        throw new Error('Utilisateur n\'appartient pas à cette famille');
+      }
+      
+      return {
+        familyMember: member,
+        familyId: auth.familyId,
+        family: member.families,
+        scope: 'family',
+      };
+    }
+    
+    return {
+      familyId: auth.familyId,
+      family,
+      scope: 'family',
+    };
+  }
+  
+  throw new Error('Scope invalide');
+}
+
+// Fonction helper pour obtenir l'utilisateur et la famille (ancienne méthode, conservée pour compatibilité)
+async function getUserAndFamily(userId: string): Promise<{
+  familyMember: any;
+  familyId: string;
+  family: any;
+}> {
   // Récupérer le membre de famille
   const { data: familyMember, error: memberError } = await supabase
     .from('family_members')
@@ -65,33 +237,41 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     // Outils pour les tâches
     {
       name: 'get_tasks',
-      description: 'Récupère les tâches d\'une famille. Peut filtrer par statut (pending, in_progress, completed)',
+      description: 'Récupère les tâches d\'une famille. Peut filtrer par statut (todo, completed). Accepte une clé API optionnelle pour l\'authentification.',
       inputSchema: {
         type: 'object',
         properties: {
+          apiKey: {
+            type: 'string',
+            description: 'Clé API pour l\'authentification (optionnel, format: fml_xxxx_xxxx)',
+          },
           userId: {
             type: 'string',
-            description: 'ID de l\'utilisateur (UUID)',
+            description: 'ID de l\'utilisateur (UUID, requis si pas de clé API)',
           },
           status: {
             type: 'string',
-            enum: ['pending', 'in_progress', 'completed', 'all'],
+            enum: ['todo', 'completed', 'all'],
             description: 'Filtrer par statut (optionnel, par défaut: all)',
             default: 'all',
           },
         },
-        required: ['userId'],
+        required: [],
       },
     },
     {
       name: 'create_task',
-      description: 'Crée une nouvelle tâche pour la famille',
+      description: 'Crée une nouvelle tâche pour la famille. Accepte une clé API optionnelle pour l\'authentification.',
       inputSchema: {
         type: 'object',
         properties: {
+          apiKey: {
+            type: 'string',
+            description: 'Clé API pour l\'authentification (optionnel, format: fml_xxxx_xxxx)',
+          },
           userId: {
             type: 'string',
-            description: 'ID de l\'utilisateur qui crée la tâche (UUID)',
+            description: 'ID de l\'utilisateur qui crée la tâche (UUID, requis si pas de clé API)',
           },
           title: {
             type: 'string',
@@ -110,7 +290,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             description: 'Date d\'échéance au format YYYY-MM-DD (optionnel)',
           },
         },
-        required: ['userId', 'title'],
+        required: ['title'],
       },
     },
     {
@@ -149,13 +329,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     // Outils pour l'agenda
     {
       name: 'get_schedules',
-      description: 'Récupère les horaires/événements de l\'agenda. Peut filtrer par date ou membre de famille',
+      description: 'Récupère les horaires/événements de l\'agenda. Peut filtrer par date ou membre de famille. Accepte une clé API optionnelle pour l\'authentification.',
       inputSchema: {
         type: 'object',
         properties: {
+          apiKey: {
+            type: 'string',
+            description: 'Clé API pour l\'authentification (optionnel, format: fml_xxxx_xxxx)',
+          },
           userId: {
             type: 'string',
-            description: 'ID de l\'utilisateur (UUID)',
+            description: 'ID de l\'utilisateur (UUID, requis si pas de clé API)',
           },
           date: {
             type: 'string',
@@ -166,18 +350,22 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             description: 'ID du membre de famille pour filtrer (optionnel, UUID)',
           },
         },
-        required: ['userId'],
+        required: [],
       },
     },
     {
       name: 'create_schedule',
-      description: 'Crée un nouvel événement dans l\'agenda',
+      description: 'Crée un nouvel événement dans l\'agenda. Accepte une clé API optionnelle pour l\'authentification.',
       inputSchema: {
         type: 'object',
         properties: {
+          apiKey: {
+            type: 'string',
+            description: 'Clé API pour l\'authentification (optionnel, format: fml_xxxx_xxxx)',
+          },
           userId: {
             type: 'string',
-            description: 'ID de l\'utilisateur qui crée l\'événement (UUID)',
+            description: 'ID de l\'utilisateur qui crée l\'événement (UUID, requis si pas de clé API)',
           },
           familyMemberId: {
             type: 'string',
@@ -352,6 +540,96 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ['listId'],
       },
     },
+    // Outils pour la gestion des clés API
+    {
+      name: 'create_api_key',
+      description: 'Crée une nouvelle clé API pour une famille ou toutes les familles',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          userId: {
+            type: 'string',
+            description: 'ID de l\'utilisateur créateur (UUID)',
+          },
+          familyId: {
+            type: 'string',
+            description: 'ID de la famille (requis si scope=family, UUID)',
+          },
+          name: {
+            type: 'string',
+            description: 'Nom descriptif de la clé',
+          },
+          description: {
+            type: 'string',
+            description: 'Description optionnelle de la clé',
+          },
+          scope: {
+            type: 'string',
+            enum: ['family', 'all'],
+            description: 'Portée de la clé: "family" pour une famille, "all" pour toutes les familles',
+          },
+          expiresAt: {
+            type: 'string',
+            description: 'Date d\'expiration au format ISO 8601 (optionnel)',
+          },
+        },
+        required: ['userId', 'name', 'scope'],
+      },
+    },
+    {
+      name: 'list_api_keys',
+      description: 'Liste les clés API d\'une famille ou de l\'utilisateur',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          userId: {
+            type: 'string',
+            description: 'ID de l\'utilisateur (UUID)',
+          },
+          familyId: {
+            type: 'string',
+            description: 'ID de la famille pour filtrer (optionnel, UUID)',
+          },
+        },
+        required: ['userId'],
+      },
+    },
+    {
+      name: 'revoke_api_key',
+      description: 'Révoque (désactive) une clé API sans la supprimer',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          userId: {
+            type: 'string',
+            description: 'ID de l\'utilisateur (UUID)',
+          },
+          keyId: {
+            type: 'string',
+            description: 'ID de la clé à révoquer (UUID)',
+          },
+        },
+        required: ['userId', 'keyId'],
+      },
+    },
+    {
+      name: 'delete_api_key',
+      description: 'Supprime définitivement une clé API',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          userId: {
+            type: 'string',
+            description: 'ID de l\'utilisateur (UUID)',
+          },
+          keyId: {
+            type: 'string',
+            description: 'ID de la clé à supprimer (UUID)',
+          },
+        },
+        required: ['userId', 'keyId'],
+      },
+    },
   ],
 }));
 
@@ -363,8 +641,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     switch (name) {
       // Gestion des tâches
       case 'get_tasks': {
-        const { userId, status = 'all' } = args as { userId: string; status?: string };
-        const { familyId } = await getUserAndFamily(userId);
+        const { apiKey, userId, status = 'all' } = args as { apiKey?: string; userId?: string; status?: string };
+        
+        // Authentification : clé API (paramètre ou env), ou userId
+        let familyId: string;
+        const effectiveApiKey = apiKey || MCP_API_KEY;
+        
+        if (effectiveApiKey) {
+          const auth = await getUserAndFamilyFromApiKey(effectiveApiKey, userId);
+          familyId = auth.familyId;
+        } else if (userId) {
+          const result = await getUserAndFamily(userId);
+          familyId = result.familyId;
+        } else {
+          throw new Error('apiKey ou userId requis');
+        }
 
         let query = supabase
           .from('tasks')
@@ -392,14 +683,34 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'create_task': {
-        const { userId, title, description, assignedTo, dueDate } = args as {
-          userId: string;
+        const { apiKey, userId, title, description, assignedTo, dueDate } = args as {
+          apiKey?: string;
+          userId?: string;
           title: string;
           description?: string;
           assignedTo?: string;
           dueDate?: string;
         };
-        const { familyId } = await getUserAndFamily(userId);
+        
+        // Authentification : clé API (paramètre ou env), ou userId
+        let familyId: string;
+        let actualUserId: string;
+        const effectiveApiKey = apiKey || MCP_API_KEY;
+        
+        if (effectiveApiKey) {
+          const auth = await getUserAndFamilyFromApiKey(effectiveApiKey, userId);
+          familyId = auth.familyId;
+          actualUserId = userId || auth.familyMember?.user_id || '';
+          if (!actualUserId) {
+            throw new Error('userId requis avec clé API pour créer une tâche');
+          }
+        } else if (userId) {
+          const result = await getUserAndFamily(userId);
+          familyId = result.familyId;
+          actualUserId = userId;
+        } else {
+          throw new Error('apiKey ou userId requis');
+        }
 
         const { data, error } = await supabase
           .from('tasks')
@@ -410,7 +721,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             assigned_to: assignedTo || null,
             due_date: dueDate || null,
             status: 'todo',
-            created_by: userId,
+            created_by: actualUserId,
           })
           .select()
           .single();
@@ -468,14 +779,29 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       // Gestion de l'agenda
       case 'get_schedules': {
-        const { userId, date, familyMemberId } = args as {
-          userId: string;
+        const { apiKey, userId, date, familyMemberId } = args as {
+          apiKey?: string;
+          userId?: string;
           date?: string;
           familyMemberId?: string;
         };
 
-        const { familyMember } = await getUserAndFamily(userId);
-        const familyId = familyMember.family_id;
+        // Authentification : clé API (paramètre ou env), ou userId
+        let familyId: string;
+        let familyMember: any;
+        const effectiveApiKey = apiKey || MCP_API_KEY;
+        
+        if (effectiveApiKey) {
+          const auth = await getUserAndFamilyFromApiKey(effectiveApiKey, userId);
+          familyId = auth.familyId;
+          familyMember = auth.familyMember;
+        } else if (userId) {
+          const result = await getUserAndFamily(userId);
+          familyId = result.familyId;
+          familyMember = result.familyMember;
+        } else {
+          throw new Error('apiKey ou userId requis');
+        }
 
         // Récupérer tous les membres de la famille
         const { data: members, error: membersError } = await supabase
@@ -526,8 +852,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case 'create_schedule': {
-        const { userId, familyMemberId, title, description, date, startTime, endTime } = args as {
-          userId: string;
+        const { apiKey, userId, familyMemberId, title, description, date, startTime, endTime } = args as {
+          apiKey?: string;
+          userId?: string;
           familyMemberId: string;
           title: string;
           description?: string;
@@ -535,6 +862,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           startTime: string;
           endTime: string;
         };
+
+        // Authentification : clé API (paramètre ou env), ou userId
+        const effectiveApiKey = apiKey || MCP_API_KEY;
+        if (!effectiveApiKey && !userId) {
+          throw new Error('apiKey ou userId requis');
+        }
 
         const { data, error } = await supabase
           .from('schedules')
@@ -757,6 +1090,202 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             {
               type: 'text',
               text: `Liste ${listId} supprimée avec succès`,
+            },
+          ],
+        };
+      }
+
+      // Gestion des clés API
+      case 'create_api_key': {
+        const { userId, familyId, name, description, scope, expiresAt } = args as {
+          userId: string;
+          familyId?: string;
+          name: string;
+          description?: string;
+          scope: 'family' | 'all';
+          expiresAt?: string;
+        };
+
+        // Vérifier les permissions
+        if (scope === 'family' && !familyId) {
+          throw new Error('familyId requis pour scope "family"');
+        }
+
+        if (scope === 'family') {
+          // Vérifier que l'utilisateur est parent de la famille
+          const { data: member, error: memberError } = await supabase
+            .from('family_members')
+            .select('role')
+            .eq('user_id', userId)
+            .eq('family_id', familyId)
+            .maybeSingle();
+
+          if (memberError || !member || member.role !== 'parent') {
+            throw new Error('Seuls les parents peuvent créer des clés API pour leur famille');
+          }
+        }
+
+        // Générer la clé
+        const { key, hash, prefix } = generateApiKey();
+
+        // Insérer dans la base de données
+        const { data, error } = await supabase
+          .from('mcp_api_keys')
+          .insert({
+            family_id: scope === 'family' ? familyId : null,
+            key_hash: hash,
+            key_prefix: prefix,
+            name,
+            description: description || null,
+            scope,
+            expires_at: expiresAt || null,
+            created_by: userId,
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        // Retourner la clé (seule fois où elle est visible)
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                id: data.id,
+                key: key, // ⚠️ À afficher une seule fois
+                name: data.name,
+                scope: data.scope,
+                familyId: data.family_id,
+                expiresAt: data.expires_at,
+                createdAt: data.created_at,
+                warning: '⚠️ IMPORTANT: Sauvegardez cette clé maintenant. Elle ne sera plus visible après.',
+              }, null, 2),
+            },
+          ],
+        };
+      }
+
+      case 'list_api_keys': {
+        const { userId, familyId } = args as { userId: string; familyId?: string };
+
+        let query = supabase
+          .from('mcp_api_keys')
+          .select('id, key_prefix, name, description, scope, is_active, last_used_at, expires_at, created_at, family_id')
+          .eq('created_by', userId);
+
+        if (familyId) {
+          query = query.eq('family_id', familyId);
+        }
+
+        const { data, error } = await query.order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        // Masquer les clés complètes, afficher seulement le préfixe
+        const safeData = (data || []).map((key: any) => ({
+          id: key.id,
+          keyPrefix: key.key_prefix,
+          maskedKey: `fml_${key.key_prefix}_****`, // Masquer la partie aléatoire
+          name: key.name,
+          description: key.description,
+          scope: key.scope,
+          isActive: key.is_active,
+          lastUsedAt: key.last_used_at,
+          expiresAt: key.expires_at,
+          createdAt: key.created_at,
+          familyId: key.family_id,
+        }));
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(safeData, null, 2),
+            },
+          ],
+        };
+      }
+
+      case 'revoke_api_key': {
+        const { userId, keyId } = args as { userId: string; keyId: string };
+
+        // Vérifier que l'utilisateur est le créateur
+        const { data: key, error: keyError } = await supabase
+          .from('mcp_api_keys')
+          .select('created_by')
+          .eq('id', keyId)
+          .maybeSingle();
+
+        if (keyError || !key) {
+          throw new Error('Clé API non trouvée');
+        }
+
+        if (key.created_by !== userId) {
+          throw new Error('Vous n\'êtes pas autorisé à révoquer cette clé');
+        }
+
+        // Désactiver la clé
+        const { data, error } = await supabase
+          .from('mcp_api_keys')
+          .update({ is_active: false })
+          .eq('id', keyId)
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                message: 'Clé API révoquée avec succès',
+                key: {
+                  id: data.id,
+                  name: data.name,
+                  isActive: data.is_active,
+                },
+              }, null, 2),
+            },
+          ],
+        };
+      }
+
+      case 'delete_api_key': {
+        const { userId, keyId } = args as { userId: string; keyId: string };
+
+        // Vérifier que l'utilisateur est le créateur
+        const { data: key, error: keyError } = await supabase
+          .from('mcp_api_keys')
+          .select('created_by, name')
+          .eq('id', keyId)
+          .maybeSingle();
+
+        if (keyError || !key) {
+          throw new Error('Clé API non trouvée');
+        }
+
+        if (key.created_by !== userId) {
+          throw new Error('Vous n\'êtes pas autorisé à supprimer cette clé');
+        }
+
+        // Supprimer la clé
+        const { error } = await supabase
+          .from('mcp_api_keys')
+          .delete()
+          .eq('id', keyId);
+
+        if (error) throw error;
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                message: `Clé API "${key.name}" supprimée définitivement`,
+                keyId,
+              }, null, 2),
             },
           ],
         };
