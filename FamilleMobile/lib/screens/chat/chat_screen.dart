@@ -205,39 +205,61 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollToBottom();
 
     try {
-      // Envoyer le message à OpenAI
-      final response = await OpenAIService.sendMessage(
+      // Créer le message assistant vide pour le streaming
+      final assistantMessageId = DateTime.now().millisecondsSinceEpoch.toString();
+      String fullResponse = '';
+      
+      setState(() {
+        _messages.add({
+          'role': 'assistant',
+          'content': '',
+          'id': assistantMessageId,
+        });
+      });
+
+      // Utiliser le streaming pour recevoir la réponse au fur et à mesure
+      await for (final chunk in OpenAIService.sendMessageStream(
         message: message,
         conversationHistory: _messages
             .where((m) => m['role'] != 'system')
             .map((m) => {'role': m['role']!, 'content': m['content']!})
             .toList(),
-      );
+      )) {
+        if (mounted) {
+          fullResponse += chunk;
+          // Mettre à jour le message avec le contenu accumulé
+          setState(() {
+            final messageIndex = _messages.indexWhere((m) => m['id'] == assistantMessageId);
+            if (messageIndex != -1) {
+              _messages[messageIndex]['content'] = fullResponse;
+            }
+          });
+          // Faire défiler vers le bas à chaque chunk
+          _scrollToBottom();
+        }
+      }
 
-      final assistantMessageId = DateTime.now().millisecondsSinceEpoch.toString();
-      setState(() {
-        _messages.add({
-          'role': 'assistant',
-          'content': response,
-          'id': assistantMessageId,
+      // Marquer le chargement comme terminé
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
         });
-        _isLoading = false;
-      });
+      }
 
-      // Sauvegarder le message assistant
+      // Sauvegarder le message assistant complet
       try {
         await _supabaseService.saveMessage(
           conversationId: _conversationId!,
           role: 'assistant',
-          content: response,
+          content: fullResponse,
         );
       } catch (e) {
         debugPrint('Erreur lors de la sauvegarde du message assistant: $e');
       }
 
       // Lecture automatique si activée
-      if (_autoPlayEnabled && response.isNotEmpty) {
-        _playTextToSpeech(response, assistantMessageId);
+      if (_autoPlayEnabled && fullResponse.isNotEmpty && mounted) {
+        _playTextToSpeech(fullResponse, assistantMessageId);
       }
     } catch (e) {
       String errorMessage;

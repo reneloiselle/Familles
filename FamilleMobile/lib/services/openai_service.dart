@@ -21,6 +21,7 @@ class OpenAIException implements Exception {
 class OpenAIService {
   // Utiliser l'API du serveur web Next.js au lieu d'OpenAI directement
   static String get _apiUrl => '${ApiConfig.baseUrl}/api/chat';
+  static String get _streamUrl => '${ApiConfig.baseUrl}/api/chat/stream';
   static String get _ttsUrl => '${ApiConfig.baseUrl}/api/chat/tts';
 
   // Note: Les méthodes de gestion de clé API ne sont plus utilisées
@@ -140,6 +141,124 @@ class OpenAIService {
       }
       if (e is FormatException) {
         throw OpenAIException('Erreur de format de réponse: ${e.toString()}');
+      }
+      throw OpenAIException('Erreur de connexion: ${e.toString()}');
+    }
+  }
+
+  /// Envoie un message à OpenAI via le serveur web avec streaming et retourne un stream de réponses
+  static Stream<String> sendMessageStream({
+    required String message,
+    required List<Map<String, String>> conversationHistory,
+  }) async* {
+    // Récupérer le token d'authentification Supabase
+    final supabase = SupabaseService.client;
+    final session = supabase.auth.currentSession;
+    if (session == null) {
+      throw OpenAIException('Vous devez être connecté pour utiliser le chat');
+    }
+
+    try {
+      debugPrint('Envoi de la requête stream à: $_streamUrl');
+      final request = http.Request('POST', Uri.parse(_streamUrl));
+      request.headers.addAll({
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ${session.accessToken}',
+      });
+      request.body = jsonEncode({
+        'message': message,
+        'conversationHistory': conversationHistory,
+      });
+
+      final streamedResponse = await request.send().timeout(
+        const Duration(seconds: 60),
+        onTimeout: () {
+          throw OpenAIException('Timeout: Le serveur ne répond pas. Vérifiez que votre serveur Next.js est démarré et que l\'URL est correcte dans ApiConfig.baseUrl.');
+        },
+      );
+
+      debugPrint('Réponse stream reçue: ${streamedResponse.statusCode}');
+
+      if (streamedResponse.statusCode == 200) {
+        String buffer = '';
+        await for (final chunk in streamedResponse.stream.transform(utf8.decoder)) {
+          buffer += chunk;
+          final lines = buffer.split('\n');
+          // Garder la dernière ligne incomplète dans le buffer
+          buffer = lines.removeLast();
+
+          for (final line in lines) {
+            if (line.trim().isEmpty) continue;
+            
+            if (line.startsWith('data: ')) {
+              final data = line.substring(6).trim();
+              if (data == '[DONE]') {
+                return;
+              }
+              if (data.isEmpty) continue;
+
+              try {
+                final jsonData = jsonDecode(data) as Map<String, dynamic>;
+                
+                // Vérifier s'il y a une erreur
+                if (jsonData.containsKey('error')) {
+                  final errorMessage = jsonData['error'] as String;
+                  final errorType = jsonData['type'] as String?;
+                  throw OpenAIException(errorMessage, type: errorType);
+                }
+
+                // Extraire le contenu
+                final content = jsonData['content'] as String?;
+                if (content != null && content.isNotEmpty) {
+                  yield content;
+                }
+              } catch (e) {
+                if (e is OpenAIException) {
+                  rethrow;
+                }
+                // Ignorer les erreurs de parsing pour les lignes incomplètes
+                debugPrint('Erreur de parsing SSE: $e, ligne: $line');
+              }
+            }
+          }
+        }
+        
+        // Traiter le dernier buffer s'il reste quelque chose
+        if (buffer.trim().isNotEmpty) {
+          if (buffer.startsWith('data: ')) {
+            final data = buffer.substring(6).trim();
+            if (data != '[DONE]' && data.isNotEmpty) {
+              try {
+                final jsonData = jsonDecode(data) as Map<String, dynamic>;
+                final content = jsonData['content'] as String?;
+                if (content != null && content.isNotEmpty) {
+                  yield content;
+                }
+              } catch (e) {
+                debugPrint('Erreur de parsing SSE final: $e');
+              }
+            }
+          }
+        }
+      } else {
+        final responseBody = await streamedResponse.stream.transform(utf8.decoder).join();
+        final errorData = jsonDecode(responseBody) as Map<String, dynamic>;
+        final errorMessage = errorData['error'] as String? ?? 'Erreur inconnue';
+        final errorType = errorData['type'] as String?;
+        throw OpenAIException(errorMessage, type: errorType, statusCode: streamedResponse.statusCode);
+      }
+    } catch (e) {
+      if (e is OpenAIException) {
+        rethrow;
+      }
+      if (e is SocketException) {
+        throw OpenAIException(
+          'Impossible de se connecter au serveur. Vérifiez que:\n'
+          '1. Votre serveur Next.js est démarré (npm run dev)\n'
+          '2. L\'URL dans ApiConfig.baseUrl est correcte\n'
+          '3. Pour un appareil physique, utilisez votre IP locale au lieu de localhost\n'
+          '4. Le serveur est accessible depuis votre réseau',
+        );
       }
       throw OpenAIException('Erreur de connexion: ${e.toString()}');
     }
