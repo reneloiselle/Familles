@@ -5,6 +5,7 @@ class AudioService {
   static const String _autoPlayPrefKey = 'tts_auto_play';
   static const String _voicePrefKey = 'tts_voice';
   static const String _speedPrefKey = 'tts_speed';
+  static const String _autoSendDictationPrefKey = 'auto_send_dictation';
   
   final AudioPlayer _audioPlayer = AudioPlayer();
   bool _isPlaying = false;
@@ -44,6 +45,18 @@ class AudioService {
   static Future<bool> setSpeed(double speed) async {
     final prefs = await SharedPreferences.getInstance();
     return await prefs.setDouble(_speedPrefKey, speed);
+  }
+
+  /// Vérifie si l'envoi automatique après dictée est activé
+  static Future<bool> isAutoSendDictationEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_autoSendDictationPrefKey) ?? false;
+  }
+
+  /// Active ou désactive l'envoi automatique après dictée
+  static Future<bool> setAutoSendDictation(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    return await prefs.setBool(_autoSendDictationPrefKey, enabled);
   }
 
   /// Joue un fichier audio

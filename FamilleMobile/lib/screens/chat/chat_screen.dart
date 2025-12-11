@@ -25,6 +25,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isPlayingAudio = false;
   String? _currentPlayingMessageId;
   bool _autoPlayEnabled = false;
+  bool _autoSendDictationEnabled = false;
   bool _isListening = false;
   String? _conversationId;
   bool _isLoadingHistory = true;
@@ -48,6 +49,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _initializeChat() async {
     await _checkApiKey();
     await _loadAutoPlaySetting();
+    await _loadAutoSendDictationSetting();
     await _initializeSpeech();
     await _loadConversationHistory();
   }
@@ -68,6 +70,13 @@ class _ChatScreenState extends State<ChatScreen> {
     final enabled = await AudioService.isAutoPlayEnabled();
     setState(() {
       _autoPlayEnabled = enabled;
+    });
+  }
+
+  Future<void> _loadAutoSendDictationSetting() async {
+    final enabled = await AudioService.isAutoSendDictationEnabled();
+    setState(() {
+      _autoSendDictationEnabled = enabled;
     });
   }
 
@@ -182,7 +191,17 @@ class _ChatScreenState extends State<ChatScreen> {
       debugPrint('Erreur lors de la sauvegarde du message utilisateur: $e');
     }
 
-    _messageController.clear();
+    // Vider le champ de texte dans un setState pour iOS
+    // Utiliser addPostFrameCallback pour s'assurer que le clear() est bien appliqué
+    if (mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() {
+            _messageController.clear();
+          });
+        }
+      });
+    }
     _scrollToBottom();
 
     try {
@@ -275,6 +294,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _startListening() async {
+    // Vérifier la disponibilité
     final available = await _speechService.isAvailable();
     if (!available) {
       if (mounted) {
@@ -282,61 +302,146 @@ class _ChatScreenState extends State<ChatScreen> {
           const SnackBar(
             content: Text('La reconnaissance vocale n\'est pas disponible'),
             backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
           ),
         );
       }
       return;
     }
 
-    setState(() {
-      _isListening = true;
-    });
+    // Vérifier les permissions
+    final hasPermissions = await _speechService.checkPermissions();
+    if (!hasPermissions) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Les permissions du microphone sont requises. Veuillez les activer dans les paramètres.'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+      return;
+    }
+
+    // Mettre à jour l'état avant de démarrer
+    if (mounted) {
+      setState(() {
+        _isListening = true;
+      });
+    }
 
     final success = await _speechService.startListening(
       localeId: 'fr_FR',
       onResult: (text) {
-        setState(() {
-          _messageController.text = text;
-        });
+        if (mounted) {
+          setState(() {
+            _messageController.text = text;
+          });
+        }
       },
-      onDone: () {
-        setState(() {
-          _isListening = false;
-        });
+      onDone: () async {
+        if (mounted) {
+          setState(() {
+            _isListening = false;
+          });
+          
+          // Envoyer automatiquement si l'option est activée
+          if (_autoSendDictationEnabled && _messageController.text.trim().isNotEmpty) {
+            // Attendre un peu pour que le texte final soit bien mis à jour
+            await Future.delayed(const Duration(milliseconds: 300));
+            if (mounted && _messageController.text.trim().isNotEmpty) {
+              _sendMessage();
+            }
+          }
+        }
         // Le texte est déjà dans le TextField grâce à onResult
       },
+      onError: (error) {
+        if (mounted) {
+          setState(() {
+            _isListening = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(error),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 4),
+              action: SnackBarAction(
+                label: 'Réessayer',
+                textColor: Colors.white,
+                onPressed: () {
+                  // Réessayer après un court délai
+                  Future.delayed(const Duration(milliseconds: 500), () {
+                    _startListening();
+                  });
+                },
+              ),
+            ),
+          );
+        }
+      },
+      timeoutSeconds: 60, // Timeout de 60 secondes
     );
 
     if (!success && mounted) {
       setState(() {
         _isListening = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Impossible de démarrer l\'écoute. Vérifiez les permissions du microphone.'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      // L'erreur a déjà été gérée par onError, mais on vérifie quand même
+      final lastError = _speechService.lastError;
+      if (lastError == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Impossible de démarrer l\'écoute. Vérifiez les permissions du microphone.'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 
   Future<void> _stopListening() async {
-    final finalText = await _speechService.stopListening();
-    setState(() {
-      _isListening = false;
-      // S'assurer que le texte final est dans le TextField
-      if (finalText.isNotEmpty && _messageController.text != finalText) {
-        _messageController.text = finalText;
+    try {
+      final finalText = await _speechService.stopListening();
+      if (mounted) {
+        setState(() {
+          _isListening = false;
+          // S'assurer que le texte final est dans le TextField
+          if (finalText.isNotEmpty && _messageController.text != finalText) {
+            _messageController.text = finalText;
+          }
+        });
       }
-    });
+    } catch (e) {
+      debugPrint('Erreur lors de l\'arrêt de l\'écoute: $e');
+      if (mounted) {
+        setState(() {
+          _isListening = false;
+        });
+      }
+    }
   }
 
   Future<void> _cancelListening() async {
-    await _speechService.cancelListening();
-    setState(() {
-      _isListening = false;
-      _messageController.clear();
-    });
+    try {
+      await _speechService.cancelListening();
+      if (mounted) {
+        setState(() {
+          _isListening = false;
+          _messageController.clear();
+        });
+      }
+    } catch (e) {
+      debugPrint('Erreur lors de l\'annulation de l\'écoute: $e');
+      if (mounted) {
+        setState(() {
+          _isListening = false;
+          _messageController.clear();
+        });
+      }
+    }
   }
 
   Future<void> _playTextToSpeech(String text, String messageId) async {
@@ -391,11 +496,13 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
 
-  void _showTTSSettings() {
-    showDialog(
+  void _showTTSSettings() async {
+    await showDialog(
       context: context,
       builder: (context) => _TTSSettingsDialog(),
     );
+    // Recharger les paramètres après la fermeture de la boîte de dialogue
+    await _loadAutoSendDictationSetting();
   }
 
   void _clearChat() {
@@ -444,7 +551,10 @@ class _ChatScreenState extends State<ChatScreen> {
     _messageController.dispose();
     _scrollController.dispose();
     _audioService.dispose();
-    _speechService.stopListening();
+    // Arrêter proprement l'écoute si elle est en cours
+    if (_isListening) {
+      _speechService.forceStop();
+    }
     super.dispose();
   }
 
@@ -475,6 +585,56 @@ class _ChatScreenState extends State<ChatScreen> {
               );
             },
             tooltip: _autoPlayEnabled ? 'Désactiver la lecture auto' : 'Activer la lecture auto',
+          ),
+          // Bouton envoi automatique après dictée
+          IconButton(
+            icon: Stack(
+              children: [
+                Icon(
+                  Icons.mic,
+                  color: _autoSendDictationEnabled 
+                      ? Theme.of(context).colorScheme.primary 
+                      : null,
+                ),
+                if (_autoSendDictationEnabled)
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        color: Colors.green,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.check,
+                        size: 10,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            onPressed: () async {
+              final newValue = !_autoSendDictationEnabled;
+              await AudioService.setAutoSendDictation(newValue);
+              setState(() {
+                _autoSendDictationEnabled = newValue;
+              });
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    newValue
+                        ? 'Envoi automatique après dictée activé'
+                        : 'Envoi automatique après dictée désactivé',
+                  ),
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+            },
+            tooltip: _autoSendDictationEnabled 
+                ? 'Désactiver l\'envoi auto après dictée' 
+                : 'Activer l\'envoi auto après dictée',
           ),
           // Menu des paramètres TTS
           PopupMenuButton<String>(
@@ -824,77 +984,102 @@ class _ChatScreenState extends State<ChatScreen> {
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: Colors.red.shade200),
                       ),
-                      child: Row(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.red.shade700),
-                            ),
+                          Row(
+                            children: [
+                              SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.red.shade700),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Écoute en cours...',
+                                  style: TextStyle(
+                                    color: Colors.red,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 8),
-                          Flexible(
-                            child: Text(
-                              'Écoute en cours...',
-                              style: TextStyle(
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 4,
+                            children: [
+                              // Bouton Terminer et envoyer
+                              if (_messageController.text.trim().isNotEmpty)
+                                TextButton(
+                                  onPressed: () async {
+                                    // Arrêter l'écoute et récupérer le texte final
+                                    final finalText = await _speechService.stopListening();
+                                    setState(() {
+                                      _isListening = false;
+                                      // Mettre à jour le texte si nécessaire
+                                      if (finalText.isNotEmpty) {
+                                        _messageController.text = finalText;
+                                      }
+                                    });
+                                    // Attendre un peu pour que le texte soit bien mis à jour
+                                    await Future.delayed(const Duration(milliseconds: 200));
+                                    // Envoyer le message si le texte n'est pas vide
+                                    if (_messageController.text.trim().isNotEmpty) {
+                                      _sendMessage();
+                                    }
+                                  },
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: Colors.green.shade700,
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                    minimumSize: Size.zero,
+                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.check, size: 14),
+                                      const SizedBox(width: 4),
+                                      const Text('OK', style: TextStyle(fontSize: 12)),
+                                    ],
+                                  ),
+                                ),
+                              // Bouton Arrêter (sans envoyer)
+                              TextButton(
+                                onPressed: _stopListening,
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.orange.shade700,
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.stop, size: 14),
+                                    const SizedBox(width: 4),
+                                    const Text('Stop', style: TextStyle(fontSize: 12)),
+                                  ],
+                                ),
+                              ),
+                              // Bouton Annuler
+                              IconButton(
+                                icon: const Icon(Icons.close, size: 18),
                                 color: Colors.red,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
+                                onPressed: _cancelListening,
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                tooltip: 'Annuler',
                               ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          // Bouton Terminer et envoyer
-                          if (_messageController.text.trim().isNotEmpty)
-                            TextButton.icon(
-                              onPressed: () async {
-                                // Arrêter l'écoute et récupérer le texte final
-                                final finalText = await _speechService.stopListening();
-                                setState(() {
-                                  _isListening = false;
-                                  // Mettre à jour le texte si nécessaire
-                                  if (finalText.isNotEmpty) {
-                                    _messageController.text = finalText;
-                                  }
-                                });
-                                // Attendre un peu pour que le texte soit bien mis à jour
-                                await Future.delayed(const Duration(milliseconds: 200));
-                                // Envoyer le message si le texte n'est pas vide
-                                if (_messageController.text.trim().isNotEmpty) {
-                                  _sendMessage();
-                                }
-                              },
-                              icon: const Icon(Icons.check, size: 16),
-                              label: const Text('Terminer'),
-                              style: TextButton.styleFrom(
-                                foregroundColor: Colors.green.shade700,
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                minimumSize: Size.zero,
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              ),
-                            ),
-                          // Bouton Arrêter (sans envoyer)
-                          TextButton.icon(
-                            onPressed: _stopListening,
-                            icon: const Icon(Icons.stop, size: 16),
-                            label: const Text('Arrêter'),
-                            style: TextButton.styleFrom(
-                              foregroundColor: Colors.orange.shade700,
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              minimumSize: Size.zero,
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            ),
-                          ),
-                          // Bouton Annuler
-                          IconButton(
-                            icon: const Icon(Icons.close, size: 18),
-                            color: Colors.red,
-                            onPressed: _cancelListening,
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
-                            tooltip: 'Annuler',
+                            ],
                           ),
                         ],
                       ),
@@ -973,6 +1158,7 @@ class _TTSSettingsDialogState extends State<_TTSSettingsDialog> {
   final List<String> _voices = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'];
   String _selectedVoice = 'alloy';
   double _speed = 1.0;
+  bool _autoSendDictation = false;
 
   @override
   void initState() {
@@ -983,15 +1169,18 @@ class _TTSSettingsDialogState extends State<_TTSSettingsDialog> {
   Future<void> _loadSettings() async {
     final voice = await AudioService.getVoice();
     final speed = await AudioService.getSpeed();
+    final autoSend = await AudioService.isAutoSendDictationEnabled();
     setState(() {
       _selectedVoice = voice;
       _speed = speed;
+      _autoSendDictation = autoSend;
     });
   }
 
   Future<void> _saveSettings() async {
     await AudioService.setVoice(_selectedVoice);
     await AudioService.setSpeed(_speed);
+    await AudioService.setAutoSendDictation(_autoSendDictation);
     if (mounted) {
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1006,11 +1195,17 @@ class _TTSSettingsDialogState extends State<_TTSSettingsDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Row(
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.record_voice_over),
-          SizedBox(width: 8),
-          Text('Paramètres vocaux'),
+          const Icon(Icons.record_voice_over),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              'Paramètres vocaux',
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ],
       ),
       content: SingleChildScrollView(
@@ -1073,6 +1268,26 @@ class _TTSSettingsDialogState extends State<_TTSSettingsDialog> {
                 color: Colors.grey.shade600,
                 fontSize: 12,
               ),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Dictée vocale',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(height: 8),
+            SwitchListTile(
+              title: const Text('Envoi automatique après dictée'),
+              subtitle: const Text(
+                'Envoie automatiquement le message lorsque la dictée est terminée',
+                style: TextStyle(fontSize: 12),
+              ),
+              value: _autoSendDictation,
+              onChanged: (value) {
+                setState(() {
+                  _autoSendDictation = value;
+                });
+              },
+              contentPadding: EdgeInsets.zero,
             ),
           ],
         ),
