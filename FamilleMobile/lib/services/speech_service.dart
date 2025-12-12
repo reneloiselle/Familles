@@ -73,6 +73,90 @@ class SpeechService {
     return _isInitialized && _speech.isAvailable;
   }
 
+  /// Démarre l'écoute continue qui envoie automatiquement les résultats finaux
+  Future<bool> startContinuousListening({
+    String localeId = 'fr_FR',
+    Function(String)? onFinalResult, // Appelé à chaque résultat final
+    Function(String)? onPartialResult, // Appelé pour les résultats partiels
+    Function(String)? onError,
+    int timeoutSeconds = 0, // 0 = pas de timeout (écoute infinie)
+  }) async {
+    // Réinitialiser si nécessaire
+    if (!_isInitialized) {
+      final initialized = await initialize();
+      if (!initialized) {
+        onError?.call('Impossible d\'initialiser la reconnaissance vocale');
+        return false;
+      }
+    }
+
+    // Vérifier la disponibilité
+    if (!_speech.isAvailable) {
+      onError?.call('La reconnaissance vocale n\'est pas disponible sur cet appareil');
+      return false;
+    }
+
+    // Arrêter l'écoute en cours si nécessaire
+    if (_isListening) {
+      try {
+        await stopListening();
+        await Future.delayed(const Duration(milliseconds: 300));
+      } catch (e) {
+        debugPrint('Erreur lors de l\'arrêt de l\'écoute précédente: $e');
+      }
+    }
+
+    try {
+      _lastWords = '';
+      _lastError = null;
+      _isListening = true;
+
+      // Démarrer l'écoute en mode dictation (continue)
+      await _speech.listen(
+        onResult: (result) {
+          _lastWords = result.recognizedWords;
+          
+          if (result.finalResult) {
+            // Résultat final - envoyer immédiatement
+            if (onFinalResult != null) {
+              onFinalResult(result.recognizedWords);
+            }
+            // Ne pas arrêter l'écoute, continuer
+            _lastWords = ''; // Réinitialiser pour le prochain segment
+          } else {
+            // Résultat partiel
+            if (onPartialResult != null) {
+              onPartialResult(result.recognizedWords);
+            }
+          }
+        },
+        localeId: localeId,
+        listenMode: stt.ListenMode.dictation, // Mode dictation pour écoute continue
+        pauseFor: const Duration(seconds: 2), // Pause plus courte pour réactivité
+        cancelOnError: false,
+        partialResults: true,
+        listenFor: timeoutSeconds > 0 ? Duration(seconds: timeoutSeconds) : null, // null = infini
+      );
+
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      if (!_speech.isListening && _isListening) {
+        _isListening = false;
+        final errorMsg = _lastError ?? 'Impossible de démarrer l\'écoute. Vérifiez les permissions du microphone.';
+        onError?.call(errorMsg);
+        return false;
+      }
+
+      return true;
+    } catch (e) {
+      debugPrint('Erreur lors du démarrage de l\'écoute continue: $e');
+      _isListening = false;
+      final errorMsg = 'Erreur: ${e.toString()}';
+      onError?.call(errorMsg);
+      return false;
+    }
+  }
+
   /// Démarre l'écoute avec meilleure gestion d'erreur
   Future<bool> startListening({
     String localeId = 'fr_FR',

@@ -4,7 +4,9 @@ import '../../services/openai_service.dart';
 import '../../services/audio_service.dart';
 import '../../services/speech_service.dart';
 import '../../services/supabase_service.dart';
+import '../../services/streaming_tts_service.dart';
 import 'dart:io';
+import 'dart:async';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -20,6 +22,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final AudioService _audioService = AudioService();
   final SpeechService _speechService = SpeechService();
   final SupabaseService _supabaseService = SupabaseService();
+  final StreamingTTSService _streamingTTSService = StreamingTTSService();
   bool _isLoading = false;
   bool _hasApiKey = false;
   bool _isPlayingAudio = false;
@@ -29,6 +32,11 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isListening = false;
   String? _conversationId;
   bool _isLoadingHistory = true;
+  Duration? _audioDuration;
+  Duration? _audioPosition;
+  bool _isRealtimeMode = false; // Mode conversation en temps réel
+  bool _isContinuousMode = false; // Mode écoute continue
+  Timer? _continuousListeningCheckTimer; // Timer pour vérifier l'écoute continue
 
   @override
   void initState() {
@@ -40,7 +48,26 @@ class _ChatScreenState extends State<ChatScreen> {
           _isPlayingAudio = state == PlayerState.playing;
           if (state == PlayerState.completed || state == PlayerState.stopped) {
             _currentPlayingMessageId = null;
+            _audioPosition = null;
+            _audioDuration = null;
           }
+        });
+      }
+    });
+
+    // Écouter les changements de position et durée
+    _audioService.onPositionChanged.listen((position) {
+      if (mounted) {
+        setState(() {
+          _audioPosition = position;
+        });
+      }
+    });
+
+    _audioService.onDurationChanged.listen((duration) {
+      if (mounted) {
+        setState(() {
+          _audioDuration = duration;
         });
       }
     });
@@ -209,6 +236,9 @@ class _ChatScreenState extends State<ChatScreen> {
       final assistantMessageId = DateTime.now().millisecondsSinceEpoch.toString();
       String fullResponse = '';
       
+      // Sauvegarder l'état du mode realtime avant de commencer
+      final isRealtimeMode = _isRealtimeMode;
+      
       setState(() {
         _messages.add({
           'role': 'assistant',
@@ -216,6 +246,14 @@ class _ChatScreenState extends State<ChatScreen> {
           'id': assistantMessageId,
         });
       });
+
+      // Créer un stream controller pour le streaming TTS
+      final textStreamController = StreamController<String>();
+      
+      // Démarrer le streaming TTS si on est en mode realtime
+      if (isRealtimeMode && _autoPlayEnabled) {
+        _streamingTTSService.startStreaming(textStreamController.stream);
+      }
 
       // Utiliser le streaming pour recevoir la réponse au fur et à mesure
       await for (final chunk in OpenAIService.sendMessageStream(
@@ -227,6 +265,12 @@ class _ChatScreenState extends State<ChatScreen> {
       )) {
         if (mounted) {
           fullResponse += chunk;
+          
+          // Envoyer le chunk au streaming TTS si en mode realtime
+          if (isRealtimeMode && _autoPlayEnabled) {
+            textStreamController.add(chunk);
+          }
+          
           // Mettre à jour le message avec le contenu accumulé
           setState(() {
             final messageIndex = _messages.indexWhere((m) => m['id'] == assistantMessageId);
@@ -239,10 +283,14 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       }
 
+      // Fermer le stream
+      await textStreamController.close();
+
       // Marquer le chargement comme terminé
       if (mounted) {
         setState(() {
           _isLoading = false;
+          _isRealtimeMode = false; // Réinitialiser le mode realtime
         });
       }
 
@@ -257,9 +305,190 @@ class _ChatScreenState extends State<ChatScreen> {
         debugPrint('Erreur lors de la sauvegarde du message assistant: $e');
       }
 
-      // Lecture automatique si activée
-      if (_autoPlayEnabled && fullResponse.isNotEmpty && mounted) {
-        _playTextToSpeech(fullResponse, assistantMessageId);
+      // Lecture automatique si activée et pas en mode realtime (déjà fait en streaming)
+      if (!isRealtimeMode && _autoPlayEnabled && fullResponse.isNotEmpty && mounted) {
+        // Vérifier la longueur minimale si configurée
+        final minLength = await AudioService.getMinLengthForAutoPlay();
+        if (minLength == 0) {
+          // Pas de limite, lire directement
+          _playTextToSpeech(fullResponse, assistantMessageId);
+        } else {
+          final wordCount = fullResponse.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
+          if (wordCount >= minLength) {
+            _playTextToSpeech(fullResponse, assistantMessageId);
+          }
+        }
+      }
+    } catch (e) {
+      String errorMessage;
+      bool isQuotaError = false;
+      bool isAuthError = false;
+      
+      if (e is OpenAIException) {
+        errorMessage = e.message;
+        isQuotaError = e.type == 'quota_exceeded' || e.type == 'insufficient_quota';
+        isAuthError = e.type == 'invalid_api_key';
+      } else {
+        errorMessage = 'Erreur: ${e.toString()}';
+      }
+      
+      setState(() {
+        _messages.add({
+          'role': 'system',
+          'content': errorMessage,
+          'error_type': isQuotaError ? 'quota' : (isAuthError ? 'auth' : 'other'),
+        });
+        _isLoading = false;
+      });
+      
+      // Afficher une snackbar pour les erreurs importantes
+      if (isQuotaError || isAuthError) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(errorMessage),
+                backgroundColor: Colors.orange,
+                duration: const Duration(seconds: 5),
+                action: null,
+              ),
+            );
+          }
+        });
+      }
+    }
+
+    _scrollToBottom();
+  }
+
+  /// Envoie un message directement sans passer par le TextField
+  Future<void> _sendMessageDirectly(String message) async {
+    if (message.trim().isEmpty) return;
+
+    if (!_hasApiKey) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vous devez être connecté pour utiliser le chat'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // S'assurer qu'on a une conversation
+    _conversationId ??= await _supabaseService.getOrCreateConversation();
+
+    // Ajouter le message de l'utilisateur
+    final userMessageId = DateTime.now().millisecondsSinceEpoch.toString();
+    setState(() {
+      _messages.add({
+        'role': 'user',
+        'content': message,
+        'id': userMessageId,
+      });
+      _isLoading = true;
+    });
+
+    // Sauvegarder le message utilisateur
+    try {
+      await _supabaseService.saveMessage(
+        conversationId: _conversationId!,
+        role: 'user',
+        content: message,
+      );
+    } catch (e) {
+      debugPrint('Erreur lors de la sauvegarde du message utilisateur: $e');
+    }
+
+    _scrollToBottom();
+
+    try {
+      // Créer le message assistant vide pour le streaming
+      final assistantMessageId = DateTime.now().millisecondsSinceEpoch.toString();
+      String fullResponse = '';
+      
+      // Sauvegarder l'état du mode realtime avant de commencer
+      final isRealtimeMode = _isRealtimeMode;
+      
+      setState(() {
+        _messages.add({
+          'role': 'assistant',
+          'content': '',
+          'id': assistantMessageId,
+        });
+      });
+
+      // Créer un stream controller pour le streaming TTS
+      final textStreamController = StreamController<String>();
+      
+      // Démarrer le streaming TTS si on est en mode realtime
+      if (isRealtimeMode && _autoPlayEnabled) {
+        _streamingTTSService.startStreaming(textStreamController.stream);
+      }
+
+      // Utiliser le streaming pour recevoir la réponse au fur et à mesure
+      await for (final chunk in OpenAIService.sendMessageStream(
+        message: message,
+        conversationHistory: _messages
+            .where((m) => m['role'] != 'system')
+            .map((m) => {'role': m['role']!, 'content': m['content']!})
+            .toList(),
+      )) {
+        if (mounted) {
+          fullResponse += chunk;
+          
+          // Envoyer le chunk au streaming TTS si en mode realtime
+          if (isRealtimeMode && _autoPlayEnabled) {
+            textStreamController.add(chunk);
+          }
+          
+          // Mettre à jour le message avec le contenu accumulé
+          setState(() {
+            final messageIndex = _messages.indexWhere((m) => m['id'] == assistantMessageId);
+            if (messageIndex != -1) {
+              _messages[messageIndex]['content'] = fullResponse;
+            }
+          });
+          // Faire défiler vers le bas à chaque chunk
+          _scrollToBottom();
+        }
+      }
+
+      // Fermer le stream
+      await textStreamController.close();
+
+      // Marquer le chargement comme terminé
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _isRealtimeMode = false; // Réinitialiser le mode realtime
+        });
+      }
+
+      // Sauvegarder le message assistant complet
+      try {
+        await _supabaseService.saveMessage(
+          conversationId: _conversationId!,
+          role: 'assistant',
+          content: fullResponse,
+        );
+      } catch (e) {
+        debugPrint('Erreur lors de la sauvegarde du message assistant: $e');
+      }
+
+      // Lecture automatique si activée et pas en mode realtime (déjà fait en streaming)
+      if (!isRealtimeMode && _autoPlayEnabled && fullResponse.isNotEmpty && mounted) {
+        // Vérifier la longueur minimale si configurée
+        final minLength = await AudioService.getMinLengthForAutoPlay();
+        if (minLength == 0) {
+          // Pas de limite, lire directement
+          _playTextToSpeech(fullResponse, assistantMessageId);
+        } else {
+          final wordCount = fullResponse.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
+          if (wordCount >= minLength) {
+            _playTextToSpeech(fullResponse, assistantMessageId);
+          }
+        }
       }
     } catch (e) {
       String errorMessage;
@@ -315,7 +544,13 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  Future<void> _startListening() async {
+  String _formatDuration(Duration duration) {
+    final minutes = duration.inMinutes;
+    final seconds = duration.inSeconds % 60;
+    return '${minutes.toString().padLeft(1, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _startListening({bool continuous = false}) async {
     // Vérifier la disponibilité
     final available = await _speechService.isAvailable();
     if (!available) {
@@ -350,86 +585,186 @@ class _ChatScreenState extends State<ChatScreen> {
     if (mounted) {
       setState(() {
         _isListening = true;
+        _isContinuousMode = continuous;
       });
     }
 
-    final success = await _speechService.startListening(
-      localeId: 'fr_FR',
-      onResult: (text) {
-        if (mounted) {
-          setState(() {
-            _messageController.text = text;
-          });
-        }
-      },
-      onDone: () async {
-        if (mounted) {
-          setState(() {
-            _isListening = false;
-          });
-          
-          // Envoyer automatiquement si l'option est activée
-          if (_autoSendDictationEnabled && _messageController.text.trim().isNotEmpty) {
-            // Attendre un peu pour que le texte final soit bien mis à jour
-            await Future.delayed(const Duration(milliseconds: 300));
-            if (mounted && _messageController.text.trim().isNotEmpty) {
-              _sendMessage();
+    if (continuous) {
+      // Arrêter le timer de vérification précédent s'il existe
+      _continuousListeningCheckTimer?.cancel();
+      
+      // Mode écoute continue - envoie automatiquement les résultats finaux
+      final success = await _speechService.startContinuousListening(
+        localeId: 'fr_FR',
+        onFinalResult: (text) async {
+          // Envoyer automatiquement chaque résultat final
+          if (mounted && text.trim().isNotEmpty) {
+            // Activer le mode realtime pour la lecture en streaming
+            setState(() {
+              _isRealtimeMode = _autoPlayEnabled;
+            });
+            
+            // Envoyer directement le message
+            await _sendMessageDirectly(text);
+            
+            // Vérifier et reprendre l'écoute après un court délai
+            if (mounted && _isContinuousMode) {
+              await Future.delayed(const Duration(milliseconds: 1500));
+              // Vérifier si l'écoute est toujours active
+              if (mounted && _isContinuousMode && !_speechService.isListening) {
+                debugPrint('Reprise de l\'écoute continue après envoi...');
+                // Reprendre l'écoute
+                _startListening(continuous: true);
+              }
             }
           }
-        }
-        // Le texte est déjà dans le TextField grâce à onResult
-      },
-      onError: (error) {
-        if (mounted) {
-          setState(() {
-            _isListening = false;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(error),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 4),
-              action: SnackBarAction(
-                label: 'Réessayer',
-                textColor: Colors.white,
-                onPressed: () {
-                  // Réessayer après un court délai
-                  Future.delayed(const Duration(milliseconds: 500), () {
-                    _startListening();
-                  });
-                },
+        },
+        onPartialResult: (text) {
+          // Afficher le texte partiel dans le champ (optionnel)
+          if (mounted) {
+            setState(() {
+              _messageController.text = text;
+            });
+          }
+        },
+        onError: (error) {
+          if (mounted) {
+            debugPrint('Erreur dans l\'écoute continue: $error');
+            // Ne pas désactiver le mode continu immédiatement, essayer de reprendre
+            setState(() {
+              _isListening = false;
+            });
+            
+            // Si on est toujours en mode continu, essayer de reprendre après un délai
+            if (_isContinuousMode) {
+              Future.delayed(const Duration(seconds: 2), () {
+                if (mounted && _isContinuousMode && !_isListening) {
+                  debugPrint('Tentative de reprise après erreur...');
+                  _startListening(continuous: true);
+                }
+              });
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(error),
+                  backgroundColor: Colors.red,
+                  duration: const Duration(seconds: 3),
+                ),
+              );
+            }
+          }
+        },
+      );
+
+      if (success && mounted && continuous) {
+        // Démarrer un timer pour vérifier périodiquement que l'écoute est toujours active
+        _continuousListeningCheckTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+          if (!mounted || !_isContinuousMode) {
+            timer.cancel();
+            return;
+          }
+          
+          // Vérifier si l'écoute est toujours active
+          if (!_speechService.isListening && _isContinuousMode && !_isLoading) {
+            debugPrint('L\'écoute continue s\'est arrêtée, reprise automatique...');
+            // Reprendre l'écoute
+            _startListening(continuous: true);
+          }
+        });
+      } else if (!success && mounted) {
+        setState(() {
+          _isListening = false;
+          _isContinuousMode = false;
+        });
+        _continuousListeningCheckTimer?.cancel();
+      }
+    } else {
+      // Mode normal - une seule dictée
+      final success = await _speechService.startListening(
+        localeId: 'fr_FR',
+        onResult: (text) {
+          if (mounted) {
+            setState(() {
+              _messageController.text = text;
+            });
+          }
+        },
+        onDone: () async {
+          if (mounted) {
+            setState(() {
+              _isListening = false;
+              // Activer le mode realtime pour la lecture en streaming
+              _isRealtimeMode = _autoPlayEnabled;
+            });
+            
+            // Envoyer automatiquement si l'option est activée
+            if (_autoSendDictationEnabled && _messageController.text.trim().isNotEmpty) {
+              // Attendre un peu pour que le texte final soit bien mis à jour
+              await Future.delayed(const Duration(milliseconds: 300));
+              if (mounted && _messageController.text.trim().isNotEmpty) {
+                _sendMessage();
+              }
+            }
+          }
+          // Le texte est déjà dans le TextField grâce à onResult
+        },
+        onError: (error) {
+          if (mounted) {
+            setState(() {
+              _isListening = false;
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(error),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 4),
+                action: SnackBarAction(
+                  label: 'Réessayer',
+                  textColor: Colors.white,
+                  onPressed: () {
+                    // Réessayer après un court délai
+                    Future.delayed(const Duration(milliseconds: 500), () {
+                      _startListening(continuous: _isContinuousMode);
+                    });
+                  },
+                ),
               ),
+            );
+          }
+        },
+        timeoutSeconds: 60, // Timeout de 60 secondes
+      );
+
+      if (!success && mounted) {
+        setState(() {
+          _isListening = false;
+        });
+        // L'erreur a déjà été gérée par onError, mais on vérifie quand même
+        final lastError = _speechService.lastError;
+        if (lastError == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Impossible de démarrer l\'écoute. Vérifiez les permissions du microphone.'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 3),
             ),
           );
         }
-      },
-      timeoutSeconds: 60, // Timeout de 60 secondes
-    );
-
-    if (!success && mounted) {
-      setState(() {
-        _isListening = false;
-      });
-      // L'erreur a déjà été gérée par onError, mais on vérifie quand même
-      final lastError = _speechService.lastError;
-      if (lastError == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Impossible de démarrer l\'écoute. Vérifiez les permissions du microphone.'),
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 3),
-          ),
-        );
       }
     }
   }
 
   Future<void> _stopListening() async {
     try {
+      // Arrêter le timer de vérification
+      _continuousListeningCheckTimer?.cancel();
+      _continuousListeningCheckTimer = null;
+      
       final finalText = await _speechService.stopListening();
       if (mounted) {
         setState(() {
           _isListening = false;
+          _isContinuousMode = false; // Réinitialiser le mode continu
           // S'assurer que le texte final est dans le TextField
           if (finalText.isNotEmpty && _messageController.text != finalText) {
             _messageController.text = finalText;
@@ -441,6 +776,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) {
         setState(() {
           _isListening = false;
+          _isContinuousMode = false;
         });
       }
     }
@@ -468,6 +804,23 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _playTextToSpeech(String text, String messageId) async {
     try {
+      // Vérifier la longueur minimale si configurée
+      final minLength = await AudioService.getMinLengthForAutoPlay();
+      if (minLength > 0) {
+        final wordCount = text.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
+        if (wordCount < minLength) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Texte trop court pour la lecture automatique (minimum: $minLength mots)'),
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          }
+          return;
+        }
+      }
+
       // Arrêter la lecture en cours si nécessaire
       if (_isPlayingAudio) {
         await _audioService.stop();
@@ -477,28 +830,32 @@ class _ChatScreenState extends State<ChatScreen> {
         _currentPlayingMessageId = messageId;
       });
 
-      // Générer l'audio avec OpenAI
+      // Générer l'audio avec OpenAI (utilise le cache automatiquement)
       final voice = await AudioService.getVoice();
       final speed = await AudioService.getSpeed();
+      final model = await AudioService.getTTSModel();
       final audioPath = await OpenAIService.textToSpeech(
         text: text,
         voice: voice,
         speed: speed,
+        model: model,
       );
 
       // Jouer l'audio
       await _audioService.playAudio(audioPath);
 
-      // Nettoyer le fichier temporaire après la lecture
+      // Nettoyer le fichier temporaire après la lecture (mais pas le cache)
       _audioService.onPlayerStateChanged.listen((state) async {
         if (state == PlayerState.completed && _currentPlayingMessageId == messageId) {
           try {
             final file = File(audioPath);
-            if (await file.exists()) {
+            // Ne supprimer que si c'est un fichier temporaire (pas dans le cache)
+            if (await file.exists() && !audioPath.contains('tts_cache')) {
               await file.delete();
             }
           } catch (e) {
             // Ignorer les erreurs de suppression
+            debugPrint('Erreur lors de la suppression du fichier temporaire: $e');
           }
         }
       });
@@ -570,9 +927,11 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    _continuousListeningCheckTimer?.cancel();
     _messageController.dispose();
     _scrollController.dispose();
     _audioService.dispose();
+    _streamingTTSService.dispose();
     // Arrêter proprement l'écoute si elle est en cours
     if (_isListening) {
       _speechService.forceStop();
@@ -931,36 +1290,92 @@ class _ChatScreenState extends State<ChatScreen> {
                                         ),
                                       ),
                                       const Spacer(),
-                                      // Bouton de lecture vocale
+                                      // Contrôles de lecture vocale
                                       if (message['content'] != null && message['content']!.isNotEmpty)
-                                        IconButton(
-                                          icon: Icon(
-                                            isCurrentPlaying && _isPlayingAudio
-                                                ? Icons.pause_circle_outline
-                                                : Icons.volume_up,
-                                            size: 18,
-                                            color: isCurrentPlaying && _isPlayingAudio
-                                                ? Theme.of(context).colorScheme.primary
-                                                : Colors.grey.shade600,
-                                          ),
-                                          onPressed: () async {
-                                            if (isCurrentPlaying && _isPlayingAudio) {
-                                              await _audioService.pause();
-                                            } else {
-                                              if (_isPlayingAudio) {
-                                                await _audioService.stop();
-                                              }
-                                              await _playTextToSpeech(
-                                                message['content']!,
-                                                messageId ?? DateTime.now().millisecondsSinceEpoch.toString(),
-                                              );
-                                            }
-                                          },
-                                          padding: EdgeInsets.zero,
-                                          constraints: const BoxConstraints(),
-                                          tooltip: isCurrentPlaying && _isPlayingAudio
-                                              ? 'Pause'
-                                              : 'Lire la réponse',
+                                        Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          crossAxisAlignment: CrossAxisAlignment.end,
+                                          children: [
+                                            Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                // Bouton play/pause
+                                                IconButton(
+                                                  icon: Icon(
+                                                    isCurrentPlaying && _isPlayingAudio
+                                                        ? Icons.pause_circle_outline
+                                                        : Icons.play_circle_outline,
+                                                    size: 18,
+                                                    color: isCurrentPlaying && _isPlayingAudio
+                                                        ? Theme.of(context).colorScheme.primary
+                                                        : Colors.grey.shade600,
+                                                  ),
+                                                  onPressed: () async {
+                                                    if (isCurrentPlaying && _isPlayingAudio) {
+                                                      await _audioService.pause();
+                                                    } else if (isCurrentPlaying && !_isPlayingAudio) {
+                                                      await _audioService.resume();
+                                                    } else {
+                                                      if (_isPlayingAudio) {
+                                                        await _audioService.stop();
+                                                      }
+                                                      await _playTextToSpeech(
+                                                        message['content']!,
+                                                        messageId ?? DateTime.now().millisecondsSinceEpoch.toString(),
+                                                      );
+                                                    }
+                                                  },
+                                                  padding: EdgeInsets.zero,
+                                                  constraints: const BoxConstraints(),
+                                                  tooltip: isCurrentPlaying && _isPlayingAudio
+                                                      ? 'Pause'
+                                                      : isCurrentPlaying
+                                                          ? 'Reprendre'
+                                                          : 'Lire la réponse',
+                                                ),
+                                                // Bouton stop
+                                                if (isCurrentPlaying)
+                                                  IconButton(
+                                                    icon: const Icon(Icons.stop, size: 18),
+                                                    color: Colors.grey.shade600,
+                                                    onPressed: () async {
+                                                      await _audioService.stop();
+                                                      setState(() {
+                                                        _currentPlayingMessageId = null;
+                                                      });
+                                                    },
+                                                    padding: EdgeInsets.zero,
+                                                    constraints: const BoxConstraints(),
+                                                    tooltip: 'Arrêter',
+                                                  ),
+                                              ],
+                                            ),
+                                            // Barre de progression
+                                            if (isCurrentPlaying && _audioDuration != null && _audioPosition != null)
+                                              SizedBox(
+                                                width: 120,
+                                                child: Column(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Slider(
+                                                      value: _audioPosition!.inMilliseconds.toDouble(),
+                                                      min: 0,
+                                                      max: _audioDuration!.inMilliseconds.toDouble(),
+                                                      onChanged: (value) async {
+                                                        await _audioService.seek(Duration(milliseconds: value.toInt()));
+                                                      },
+                                                    ),
+                                                    Text(
+                                                      '${_formatDuration(_audioPosition!)} / ${_formatDuration(_audioDuration!)}',
+                                                      style: TextStyle(
+                                                        fontSize: 10,
+                                                        color: Colors.grey.shade600,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                          ],
                                         ),
                                     ],
                                   ),
@@ -1108,6 +1523,30 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   Row(
                     children: [
+                      // Bouton mode continu (si pas en écoute)
+                      if (!_isListening && _hasApiKey && !_isLoading)
+                        IconButton(
+                          icon: Icon(
+                            _isContinuousMode ? Icons.record_voice_over : Icons.mic,
+                            color: _isContinuousMode ? Colors.green : null,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _isContinuousMode = !_isContinuousMode;
+                            });
+                            if (_isContinuousMode) {
+                              _startListening(continuous: true);
+                            }
+                          },
+                          tooltip: _isContinuousMode
+                              ? 'Mode continu activé - Cliquez pour désactiver'
+                              : 'Activer le mode continu',
+                          padding: const EdgeInsets.all(8),
+                          constraints: const BoxConstraints(
+                            minWidth: 40,
+                            minHeight: 40,
+                          ),
+                        ),
                       // Bouton de dictée
                       IconButton(
                         icon: Icon(
@@ -1115,10 +1554,23 @@ class _ChatScreenState extends State<ChatScreen> {
                           color: _isListening ? Colors.red : null,
                         ),
                         onPressed: _hasApiKey && !_isLoading
-                            ? (_isListening ? _stopListening : _startListening)
+                            ? (_isListening
+                                ? _stopListening
+                                : () => _startListening(continuous: _isContinuousMode))
                             : null,
-                        tooltip: _isListening ? 'Arrêter la dictée' : 'Dictée vocale',
+                        tooltip: _isListening
+                            ? 'Arrêter la dictée'
+                            : _isContinuousMode
+                                ? 'Dictée vocale (mode continu)'
+                                : 'Dictée vocale',
+                        padding: const EdgeInsets.all(8),
+                        constraints: const BoxConstraints(
+                          minWidth: 40,
+                          minHeight: 40,
+                        ),
                       ),
+                      const SizedBox(width: 4),
+                      // Champ de texte
                       Expanded(
                         child: TextField(
                           controller: _messageController,
@@ -1142,7 +1594,8 @@ class _ChatScreenState extends State<ChatScreen> {
                           onSubmitted: (_) => _sendMessage(),
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 4),
+                      // Bouton d'envoi
                       IconButton.filled(
                         onPressed: _hasApiKey && !_isLoading && _messageController.text.trim().isNotEmpty
                             ? _sendMessage
@@ -1158,6 +1611,11 @@ class _ChatScreenState extends State<ChatScreen> {
                               )
                             : const Icon(Icons.send),
                         tooltip: 'Envoyer',
+                        padding: const EdgeInsets.all(8),
+                        constraints: const BoxConstraints(
+                          minWidth: 40,
+                          minHeight: 40,
+                        ),
                       ),
                     ],
                   ),
@@ -1178,31 +1636,103 @@ class _TTSSettingsDialog extends StatefulWidget {
 
 class _TTSSettingsDialogState extends State<_TTSSettingsDialog> {
   final List<String> _voices = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'];
+  final List<String> _models = ['tts-1', 'tts-1-hd'];
   String _selectedVoice = 'alloy';
   double _speed = 1.0;
   bool _autoSendDictation = false;
+  String _selectedModel = 'tts-1';
+  int _minLength = 0;
+  int _maxLength = 5000;
+  bool _isPreviewing = false;
+  late TextEditingController _minLengthController;
+  late TextEditingController _maxLengthController;
 
   @override
   void initState() {
     super.initState();
+    _minLengthController = TextEditingController();
+    _maxLengthController = TextEditingController();
     _loadSettings();
+  }
+
+  @override
+  void dispose() {
+    _minLengthController.dispose();
+    _maxLengthController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadSettings() async {
     final voice = await AudioService.getVoice();
     final speed = await AudioService.getSpeed();
     final autoSend = await AudioService.isAutoSendDictationEnabled();
+    final model = await AudioService.getTTSModel();
+    final minLength = await AudioService.getMinLengthForAutoPlay();
+    final maxLength = await AudioService.getMaxLengthForTTS();
     setState(() {
       _selectedVoice = voice;
       _speed = speed;
       _autoSendDictation = autoSend;
+      _selectedModel = model;
+      _minLength = minLength;
+      _maxLength = maxLength;
+      _minLengthController.text = minLength.toString();
+      _maxLengthController.text = maxLength.toString();
     });
+  }
+
+  Future<void> _previewVoice(String voice) async {
+    if (_isPreviewing) return;
+    
+    setState(() {
+      _isPreviewing = true;
+    });
+
+    try {
+      final previewText = 'Bonjour, ceci est un exemple de voix $voice.';
+      final audioPath = await OpenAIService.textToSpeech(
+        text: previewText,
+        voice: voice,
+        speed: _speed,
+        model: _selectedModel,
+      );
+      
+      // Jouer l'audio de prévisualisation
+      final audioService = AudioService();
+      await audioService.playAudio(audioPath);
+      
+      // Attendre la fin de la lecture
+      await audioService.onPlayerStateChanged.firstWhere(
+        (state) => state == PlayerState.completed || state == PlayerState.stopped,
+      );
+      
+      await audioService.dispose();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur lors de la prévisualisation: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isPreviewing = false;
+        });
+      }
+    }
   }
 
   Future<void> _saveSettings() async {
     await AudioService.setVoice(_selectedVoice);
     await AudioService.setSpeed(_speed);
     await AudioService.setAutoSendDictation(_autoSendDictation);
+    await AudioService.setTTSModel(_selectedModel);
+    await AudioService.setMinLengthForAutoPlay(_minLength);
+    await AudioService.setMaxLengthForTTS(_maxLength);
     if (mounted) {
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1245,18 +1775,81 @@ class _TTSSettingsDialogState extends State<_TTSSettingsDialog> {
               runSpacing: 8,
               children: _voices.map((voice) {
                 final isSelected = voice == _selectedVoice;
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ChoiceChip(
+                      label: Text(voice.toUpperCase()),
+                      selected: isSelected,
+                      onSelected: (selected) {
+                        if (selected) {
+                          setState(() {
+                            _selectedVoice = voice;
+                          });
+                        }
+                      },
+                    ),
+                    const SizedBox(width: 4),
+                    IconButton(
+                      icon: _isPreviewing
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.play_arrow, size: 18),
+                      onPressed: _isPreviewing ? null : () => _previewVoice(voice),
+                      tooltip: 'Écouter un exemple',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Modèle TTS',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _models.map((model) {
+                final isSelected = model == _selectedModel;
                 return ChoiceChip(
-                  label: Text(voice.toUpperCase()),
+                  label: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(model.toUpperCase()),
+                      const SizedBox(width: 4),
+                      Icon(
+                        model == 'tts-1-hd' ? Icons.high_quality : Icons.speed,
+                        size: 16,
+                      ),
+                    ],
+                  ),
                   selected: isSelected,
                   onSelected: (selected) {
                     if (selected) {
                       setState(() {
-                        _selectedVoice = voice;
+                        _selectedModel = model;
                       });
                     }
                   },
                 );
               }).toList(),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _selectedModel == 'tts-1-hd'
+                  ? 'Haute qualité (plus cher)'
+                  : 'Rapide et économique',
+              style: TextStyle(
+                color: Colors.grey.shade600,
+                fontSize: 12,
+              ),
             ),
             const SizedBox(height: 24),
             const Text(
@@ -1290,6 +1883,43 @@ class _TTSSettingsDialogState extends State<_TTSSettingsDialog> {
                 color: Colors.grey.shade600,
                 fontSize: 12,
               ),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Limites de longueur',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              decoration: InputDecoration(
+                labelText: 'Longueur minimale (mots)',
+                hintText: '0 = pas de limite',
+                helperText: 'Ne pas lire automatiquement si le texte a moins de mots',
+                border: const OutlineInputBorder(),
+              ),
+              keyboardType: TextInputType.number,
+              controller: _minLengthController,
+              onChanged: (value) {
+                setState(() {
+                  _minLength = int.tryParse(value) ?? 0;
+                });
+              },
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              decoration: InputDecoration(
+                labelText: 'Longueur maximale (caractères)',
+                hintText: '5000',
+                helperText: 'Limite pour éviter les coûts excessifs',
+                border: const OutlineInputBorder(),
+              ),
+              keyboardType: TextInputType.number,
+              controller: _maxLengthController,
+              onChanged: (value) {
+                setState(() {
+                  _maxLength = int.tryParse(value) ?? 5000;
+                });
+              },
             ),
             const SizedBox(height: 24),
             const Text(

@@ -5,6 +5,8 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import '../config/supabase_config.dart';
 import 'supabase_service.dart';
+import 'tts_cache_service.dart';
+import 'audio_service.dart';
 
 /// Exception personnalisée pour les erreurs OpenAI
 class OpenAIException implements Exception {
@@ -266,11 +268,39 @@ class OpenAIService {
 
   /// Génère un fichier audio à partir d'un texte en utilisant l'API TTS via le serveur web
   /// Retourne le chemin du fichier audio généré
+  /// Utilise le cache si disponible et implémente le retry en cas d'erreur
   static Future<String> textToSpeech({
     required String text,
-    String voice = 'alloy', // alloy, echo, fable, onyx, nova, shimmer
-    double speed = 1.0,
+    String? voice,
+    double? speed,
+    String? model,
+    int maxRetries = 3,
   }) async {
+    // Récupérer les valeurs par défaut si non fournies
+    final finalVoice = voice ?? await AudioService.getVoice();
+    final finalSpeed = speed ?? await AudioService.getSpeed();
+    final finalModel = model ?? await AudioService.getTTSModel();
+    
+    // Vérifier la limite de longueur
+    final maxLength = await AudioService.getMaxLengthForTTS();
+    if (text.length > maxLength) {
+      throw OpenAIException(
+        'Le texte est trop long (${text.length} caractères). Limite: $maxLength caractères. Veuillez réduire la longueur du texte.',
+        type: 'text_too_long',
+      );
+    }
+
+    // Vérifier le cache d'abord
+    final cachedFile = await TTSCacheService.getCachedFile(
+      text,
+      finalVoice,
+      finalSpeed,
+      finalModel,
+    );
+    if (cachedFile != null) {
+      debugPrint('Fichier audio récupéré du cache');
+      return cachedFile;
+    }
     // Récupérer le token d'authentification Supabase
     final supabase = SupabaseService.client;
     final session = supabase.auth.currentSession;
@@ -278,88 +308,136 @@ class OpenAIService {
       throw OpenAIException('Vous devez être connecté pour utiliser le TTS');
     }
 
-    try {
-      debugPrint('Envoi de la requête TTS à: $_ttsUrl');
-      final response = await http.post(
-        Uri.parse(_ttsUrl),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ${session.accessToken}',
-        },
-        body: jsonEncode({
-          'text': text,
-          'voice': voice,
-          'speed': speed,
-        }),
-      ).timeout(
-        const Duration(seconds: 30),
-        onTimeout: () {
-          throw OpenAIException('Timeout: Le serveur ne répond pas. Vérifiez que votre serveur Next.js est démarré et que l\'URL est correcte dans ApiConfig.baseUrl.');
-        },
-      );
-      
-      debugPrint('Réponse TTS reçue: ${response.statusCode}');
+    // Retry logic
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        debugPrint('Envoi de la requête TTS à: $_ttsUrl (tentative $attempt/$maxRetries)');
+        final response = await http.post(
+          Uri.parse(_ttsUrl),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ${session.accessToken}',
+          },
+          body: jsonEncode({
+            'text': text,
+            'voice': finalVoice,
+            'speed': finalSpeed,
+            'model': finalModel,
+          }),
+        ).timeout(
+          const Duration(seconds: 30),
+          onTimeout: () {
+            throw OpenAIException('Timeout: Le serveur ne répond pas. Vérifiez que votre serveur Next.js est démarré et que l\'URL est correcte dans ApiConfig.baseUrl.');
+          },
+        );
+        
+        debugPrint('Réponse TTS reçue: ${response.statusCode}');
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        final audioBase64 = data['audio'] as String;
-        
-        // Décoder le base64 et sauvegarder le fichier audio temporaire
-        final audioBytes = base64Decode(audioBase64);
-        final tempDir = await getTemporaryDirectory();
-        final audioFile = File('${tempDir.path}/openai_tts_${DateTime.now().millisecondsSinceEpoch}.mp3');
-        await audioFile.writeAsBytes(audioBytes);
-        return audioFile.path;
-      } else {
-        final errorData = jsonDecode(response.body) as Map<String, dynamic>;
-        final errorMessage = errorData['error'] as String? ?? 'Erreur inconnue';
-        final errorType = errorData['type'] as String?;
-        
-        // Gestion spécifique des erreurs de quota
-        if (response.statusCode == 429 || 
-            errorMessage.toLowerCase().contains('quota') ||
-            errorMessage.toLowerCase().contains('exceeded') ||
-            errorMessage.toLowerCase().contains('rate limit')) {
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body) as Map<String, dynamic>;
+          final audioBase64 = data['audio'] as String;
+          
+          // Décoder le base64 et sauvegarder le fichier audio temporaire
+          final audioBytes = base64Decode(audioBase64);
+          final tempDir = await getTemporaryDirectory();
+          final audioFile = File('${tempDir.path}/openai_tts_${DateTime.now().millisecondsSinceEpoch}.mp3');
+          await audioFile.writeAsBytes(audioBytes);
+          
+          // Sauvegarder dans le cache
+          await TTSCacheService.saveToCache(
+            text,
+            finalVoice,
+            finalSpeed,
+            finalModel,
+            audioFile.path,
+          );
+          
+          return audioFile.path;
+        } else {
+          final errorData = jsonDecode(response.body) as Map<String, dynamic>;
+          final errorMessage = errorData['error'] as String? ?? 'Erreur inconnue';
+          final errorType = errorData['type'] as String?;
+          
+          // Gestion spécifique des erreurs de quota (pas de retry)
+          if (response.statusCode == 429 || 
+              errorMessage.toLowerCase().contains('quota') ||
+              errorMessage.toLowerCase().contains('exceeded') ||
+              errorMessage.toLowerCase().contains('rate limit')) {
+            throw OpenAIException(
+              errorMessage,
+              type: 'quota_exceeded',
+              statusCode: response.statusCode,
+            );
+          }
+          
+          // Gestion des erreurs d'authentification (pas de retry)
+          if (response.statusCode == 401) {
+            throw OpenAIException(
+              errorMessage,
+              type: 'invalid_api_key',
+              statusCode: response.statusCode,
+            );
+          }
+          
+          // Pour les autres erreurs, on peut retry
+          if (attempt < maxRetries) {
+            await Future.delayed(Duration(milliseconds: 500 * attempt));
+            continue;
+          }
+          
           throw OpenAIException(
             errorMessage,
-            type: 'quota_exceeded',
+            type: errorType,
             statusCode: response.statusCode,
           );
         }
+      } catch (e) {
+        if (e is OpenAIException) {
+          // Ne pas retry pour certaines erreurs
+          if (e.type == 'quota_exceeded' || e.type == 'invalid_api_key' || e.type == 'text_too_long') {
+            rethrow;
+          }
+          // Retry pour les autres erreurs
+          if (attempt < maxRetries) {
+            await Future.delayed(Duration(milliseconds: 500 * attempt));
+            continue;
+          }
+          rethrow;
+        }
         
-        // Gestion des erreurs d'authentification
-        if (response.statusCode == 401) {
+        if (e is SocketException) {
+          if (attempt < maxRetries) {
+            await Future.delayed(Duration(milliseconds: 500 * attempt));
+            continue;
+          }
           throw OpenAIException(
-            errorMessage,
-            type: 'invalid_api_key',
-            statusCode: response.statusCode,
+            'Impossible de se connecter au serveur. Vérifiez que:\n'
+            '1. Votre serveur Next.js est démarré (npm run dev)\n'
+            '2. L\'URL dans ApiConfig.baseUrl est correcte\n'
+            '3. Pour un appareil physique, utilisez votre IP locale au lieu de localhost\n'
+            '4. Le serveur est accessible depuis votre réseau',
           );
         }
         
-        throw OpenAIException(
-          errorMessage,
-          type: errorType,
-          statusCode: response.statusCode,
-        );
+        if (e is FormatException) {
+          if (attempt < maxRetries) {
+            await Future.delayed(Duration(milliseconds: 500 * attempt));
+            continue;
+          }
+          throw OpenAIException('Erreur de format de réponse TTS: ${e.toString()}');
+        }
+        
+        if (attempt < maxRetries) {
+          await Future.delayed(Duration(milliseconds: 500 * attempt));
+          continue;
+        }
+        
+        throw OpenAIException('Erreur de connexion TTS: ${e.toString()}');
       }
-    } catch (e) {
-      if (e is OpenAIException) {
-        rethrow;
-      }
-      if (e is SocketException) {
-        throw OpenAIException(
-          'Impossible de se connecter au serveur. Vérifiez que:\n'
-          '1. Votre serveur Next.js est démarré (npm run dev)\n'
-          '2. L\'URL dans ApiConfig.baseUrl est correcte\n'
-          '3. Pour un appareil physique, utilisez votre IP locale au lieu de localhost\n'
-          '4. Le serveur est accessible depuis votre réseau',
-        );
-      }
-      if (e is FormatException) {
-        throw OpenAIException('Erreur de format de réponse TTS: ${e.toString()}');
-      }
-      throw OpenAIException('Erreur de connexion TTS: ${e.toString()}');
     }
+    
+    // Si on arrive ici, tous les retries ont échoué
+    throw OpenAIException('Échec après $maxRetries tentatives');
   }
 }
 

@@ -146,7 +146,7 @@ packages:
     source: hosted
     version: "0.3.5+1"
   crypto:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: crypto
       sha256: c8ea0233063ba03258fbcf2ca4d6dadfefe14f02fab57702265467a19f27fadf
@@ -858,38 +858,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.10.3"
-  syncfusion_flutter_calendar:
-    dependency: "direct main"
-    description:
-      name: syncfusion_flutter_calendar
-      sha256: "8656531727a339de9300668405a16755d6613d6211a19efeaadcd93b553edd85"
-      url: "https://pub.dev"
-    source: hosted
-    version: "31.2.16"
-  syncfusion_flutter_core:
-    dependency: transitive
-    description:
-      name: syncfusion_flutter_core
-      sha256: e68a7e214659faf0df483c760d295ab58e376a639285d2a9f7d1e43351efcbb3
-      url: "https://pub.dev"
-    source: hosted
-    version: "31.2.16"
-  syncfusion_flutter_datepicker:
-    dependency: transitive
-    description:
-      name: syncfusion_flutter_datepicker
-      sha256: "204712e0b17751fb993f28fc86095bd23079287136e73f9b7b041bd3f7d7a596"
-      url: "https://pub.dev"
-    source: hosted
-    version: "31.2.16"
-  syncfusion_localizations:
-    dependency: transitive
-    description:
-      name: syncfusion_localizations
-      sha256: "7c4699697c703e21f6b560ab4e18536ea6a10682f3b5a073a93d545122cbe430"
-      url: "https://pub.dev"
-    source: hosted
-    version: "31.2.16"
   synchronized:
     dependency: transitive
     description:
@@ -922,14 +890,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.7.7"
-  timezone:
-    dependency: transitive
-    description:
-      name: timezone
-      sha256: dd14a3b83cfd7cb19e7888f1cbc20f258b8d71b54c06f79ac585f14093a287d1
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.10.1"
   typed_data:
     dependency: transitive
     description:
@@ -1108,4 +1068,4 @@ packages:
     version: "2.1.0"
 sdks:
   dart: ">=3.9.0 <4.0.0"
-  flutter: ">=3.35.1"
+  flutter: ">=3.35.0"

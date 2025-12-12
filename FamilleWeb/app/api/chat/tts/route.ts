@@ -52,11 +52,19 @@ export async function POST(request: NextRequest) {
 
     // Récupérer les données de la requête
     const body = await request.json()
-    const { text, voice = 'alloy', speed = 1.0 } = body
+    const { text, voice = 'alloy', speed = 1.0, model = 'tts-1' } = body
 
     if (!text || typeof text !== 'string') {
       return NextResponse.json(
         { error: 'Texte requis' },
+        { status: 400 }
+      )
+    }
+
+    // Valider le modèle
+    if (model !== 'tts-1' && model !== 'tts-1-hd') {
+      return NextResponse.json(
+        { error: 'Modèle invalide. Utilisez tts-1 ou tts-1-hd' },
         { status: 400 }
       )
     }
@@ -69,7 +77,7 @@ export async function POST(request: NextRequest) {
         Authorization: `Bearer ${openaiApiKey}`,
       },
       body: JSON.stringify({
-        model: 'tts-1',
+        model: model,
         input: text,
         voice: voice,
         speed: speed,

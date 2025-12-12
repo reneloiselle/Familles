@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
-import 'package:syncfusion_flutter_calendar/calendar.dart';
 import '../../providers/schedule_provider.dart';
 import '../../providers/family_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../models/schedule.dart';
 import '../../models/family.dart';
-import '../../widgets/family_calendar_view.dart';
 import '../../widgets/location_picker.dart';
 import '../../widgets/location_viewer.dart';
 
@@ -71,24 +69,11 @@ class _ScheduleScreenContentState extends State<_ScheduleScreenContent> {
   void _loadSchedules() {
     final provider = context.read<ScheduleProvider>();
     final view = provider.view;
-    final selectedDate = provider.selectedDate;
-
-    DateTime? weekStart;
-    DateTime? date;
 
     DateTime? dateRangeStart;
     DateTime? dateRangeEnd;
 
-    if (view == 'week') {
-      // Calculer le lundi de la semaine
-      final monday = selectedDate.subtract(Duration(days: selectedDate.weekday - 1));
-      weekStart = DateTime(monday.year, monday.month, monday.day);
-    } else if (view == 'calendar') {
-      // Pour la vue calendrier, afficher les 7 prochains jours à partir d'aujourd'hui
-      final today = DateTime.now();
-      dateRangeStart = DateTime(today.year, today.month, today.day);
-      dateRangeEnd = dateRangeStart.add(const Duration(days: 7));
-    } else if (view == 'family') {
+    if (view == 'family') {
       // Pour la vue famille, afficher les 7 prochains jours à partir d'aujourd'hui
       final today = DateTime.now();
       dateRangeStart = DateTime(today.year, today.month, today.day);
@@ -98,8 +83,8 @@ class _ScheduleScreenContentState extends State<_ScheduleScreenContent> {
     provider.loadSchedules(
       familyId: widget.familyId,
       familyMemberId: view == 'personal' ? widget.familyMember.id : null,
-      date: date,
-      weekStart: weekStart,
+      date: null,
+      weekStart: null,
       dateRangeStart: dateRangeStart,
       dateRangeEnd: dateRangeEnd,
     );
@@ -119,113 +104,9 @@ class _ScheduleScreenContentState extends State<_ScheduleScreenContent> {
       ),
       body: Consumer<ScheduleProvider>(
         builder: (context, provider, _) {
-          // Pour les vues avec calendrier (calendar et week), on utilise une structure avec Expanded
-          // Pour les vues personal et family, on utilise un SingleChildScrollView
-          final isCalendarView = provider.view == 'calendar' || provider.view == 'week';
-          
           return RefreshIndicator(
             onRefresh: () async => _loadSchedules(),
-            child: isCalendarView
-                ? Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (provider.error != null)
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            margin: const EdgeInsets.only(bottom: 16),
-                            decoration: BoxDecoration(
-                              color: Colors.red.shade50,
-                              border: Border.all(color: Colors.red.shade300),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              provider.error!,
-                              style: TextStyle(color: Colors.red.shade700),
-                            ),
-                          ),
-                        if (widget.isParent) ...[
-                          SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: Row(
-                              children: [
-                                _ViewChip(
-                                  label: 'Mon agenda',
-                                  isSelected: provider.view == 'personal',
-                                  onTap: () {
-                                    provider.setView('personal');
-                                    _loadSchedules();
-                                  },
-                                ),
-                                const SizedBox(width: 8),
-                                _ViewChip(
-                                  label: 'Familles',
-                                  isSelected: provider.view == 'family',
-                                  onTap: () {
-                                    provider.setView('family');
-                                    _loadSchedules();
-                                  },
-                                ),
-                                const SizedBox(width: 8),
-                                _ViewChip(
-                                  label: 'Calendrier',
-                                  isSelected: provider.view == 'calendar',
-                                  onTap: () {
-                                    provider.setView('calendar');
-                                    _loadSchedules();
-                                  },
-                                ),
-                                const SizedBox(width: 8),
-                                _ViewChip(
-                                  label: 'Vue semaine',
-                                  isSelected: provider.view == 'week',
-                                  onTap: () {
-                                    provider.setView('week');
-                                    _loadSchedules();
-                                  },
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                        ],
-                        if (provider.isLoading && provider.schedules.isEmpty)
-                          const Expanded(
-                            child: Center(
-                              child: CircularProgressIndicator(),
-                            ),
-                          )
-                        else
-                          Expanded(
-                            child: FamilyCalendarView(
-                              schedules: provider.schedules,
-                              familyMembers: widget.familyMembers,
-                              selectedDate: provider.selectedDate,
-                              currentUserId: context.read<AuthProvider>().user?.id,
-                              calendarView: provider.view == 'calendar' 
-                                  ? CalendarView.workWeek
-                                  : CalendarView.week,
-                              onAppointmentTap: (schedule) {
-                                _showScheduleDetails(context, schedule, widget.familyMembers);
-                              },
-                              onAppointmentLongPress: widget.isParent
-                                  ? (schedule) {
-                                      _deleteSchedule(context, provider, schedule.id);
-                                    }
-                                  : null,
-                              onViewChanged: (newDate) {
-                                // Quand l'utilisateur change de plage dans le calendrier, mettre à jour la date sélectionnée et recharger
-                                debugPrint('Calendar view changed to date: $newDate');
-                                provider.setSelectedDate(newDate);
-                                _loadSchedules();
-                              },
-                            ),
-                          ),
-                      ],
-                    ),
-                  )
-                : SingleChildScrollView(
+            child: SingleChildScrollView(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.all(16),
                     child: Column(
@@ -269,111 +150,12 @@ class _ScheduleScreenContentState extends State<_ScheduleScreenContent> {
                               _loadSchedules();
                             },
                           ),
-                          const SizedBox(width: 8),
-                          _ViewChip(
-                            label: 'Calendrier',
-                            isSelected: provider.view == 'calendar',
-                            onTap: () {
-                              provider.setView('calendar');
-                              _loadSchedules();
-                            },
-                          ),
-                          const SizedBox(width: 8),
-                          _ViewChip(
-                            label: 'Vue semaine',
-                            isSelected: provider.view == 'week',
-                            onTap: () {
-                              provider.setView('week');
-                              _loadSchedules();
-                            },
-                          ),
                         ],
                       ),
                     ),
                     const SizedBox(height: 16),
                   ],
 
-                  // Sélecteur de date (pour les vues calendrier et semaine)
-                  if (provider.view == 'calendar' || provider.view == 'week') ...[
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            provider.view == 'week' ? 'Semaine à visualiser' : 'Date à visualiser',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () async {
-                              final picked = await showDatePicker(
-                                context: context,
-                                initialDate: provider.selectedDate,
-                                firstDate: DateTime(2020),
-                                lastDate: DateTime(2030),
-                                locale: const Locale('fr', 'FR'),
-                              );
-                              if (picked != null) {
-                                provider.setSelectedDate(picked);
-                                _loadSchedules();
-                              }
-                            },
-                            icon: const Icon(Icons.calendar_today),
-                            label: Text(
-                              provider.view == 'week'
-                                  ? _formatWeekRange(provider.selectedDate)
-                                  : DateFormat('dd/MM/yyyy').format(provider.selectedDate),
-                            ),
-                          ),
-                        ),
-                        if (provider.view == 'week') ...[
-                          const SizedBox(width: 8),
-                          IconButton(
-                            icon: const Icon(Icons.chevron_left),
-                            onPressed: () {
-                              final newDate = provider.selectedDate.subtract(const Duration(days: 7));
-                              provider.setSelectedDate(newDate);
-                              _loadSchedules();
-                            },
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.chevron_right),
-                            onPressed: () {
-                              final newDate = provider.selectedDate.add(const Duration(days: 7));
-                              provider.setSelectedDate(newDate);
-                              _loadSchedules();
-                            },
-                          ),
-                        ] else ...[
-                          const SizedBox(width: 8),
-                          IconButton(
-                            icon: const Icon(Icons.chevron_left),
-                            onPressed: () {
-                              final newDate = provider.selectedDate.subtract(const Duration(days: 1));
-                              provider.setSelectedDate(newDate);
-                              _loadSchedules();
-                            },
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.today),
-                            onPressed: () {
-                              provider.setSelectedDate(DateTime.now());
-                              _loadSchedules();
-                            },
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.chevron_right),
-                            onPressed: () {
-                              final newDate = provider.selectedDate.add(const Duration(days: 1));
-                              provider.setSelectedDate(newDate);
-                              _loadSchedules();
-                            },
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                  ],
 
 
                   // Contenu selon la vue (pour les vues personal et family dans le SingleChildScrollView)
@@ -404,11 +186,6 @@ class _ScheduleScreenContentState extends State<_ScheduleScreenContent> {
     );
   }
 
-  String _formatWeekRange(DateTime date) {
-    final monday = date.subtract(Duration(days: date.weekday - 1));
-    final sunday = monday.add(const Duration(days: 6));
-    return '${DateFormat('dd/MM').format(monday)} - ${DateFormat('dd/MM/yyyy').format(sunday)}';
-  }
 
   Future<void> _deleteSchedule(BuildContext context, ScheduleProvider provider, String scheduleId) async {
     final confirmed = await showDialog<bool>(
@@ -448,68 +225,6 @@ class _ScheduleScreenContentState extends State<_ScheduleScreenContent> {
     }
   }
 
-  void _showScheduleDetails(BuildContext context, Schedule schedule, List<FamilyMember> familyMembers) {
-    final member = familyMembers.firstWhere(
-      (m) => m.id == schedule.familyMemberId,
-      orElse: () => familyMembers.first,
-    );
-
-    String memberName = 'Inconnu';
-    if (member.name != null) {
-      memberName = member.name!;
-    } else if (member.email != null) {
-      memberName = member.email!;
-    }
-
-    final canEdit = widget.isParent || schedule.familyMemberId == widget.familyMember.id;
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(schedule.title),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (schedule.description != null) ...[
-              Text(schedule.description!),
-              const SizedBox(height: 8),
-            ],
-            Text('Membre: $memberName'),
-            const SizedBox(height: 4),
-            Text('Date: ${DateFormat('dd/MM/yyyy').format(schedule.dateTime)}'),
-            const SizedBox(height: 4),
-            Text('Heure: ${schedule.startTime} - ${schedule.endTime}'),
-            if (schedule.location != null) ...[
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  const Icon(Icons.location_on, size: 16),
-                  const SizedBox(width: 4),
-                  Expanded(child: Text(schedule.location!)),
-                ],
-              ),
-            ],
-          ],
-        ),
-        actions: [
-          if (canEdit)
-            TextButton.icon(
-              onPressed: () {
-                Navigator.pop(context);
-                _showScheduleModal(context, schedule: schedule);
-              },
-              icon: const Icon(Icons.edit),
-              label: const Text('Modifier'),
-            ),
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Fermer'),
-          ),
-        ],
-      ),
-    );
-  }
 
   void _showScheduleModal(BuildContext context, {Schedule? schedule}) {
     showModalBottomSheet(

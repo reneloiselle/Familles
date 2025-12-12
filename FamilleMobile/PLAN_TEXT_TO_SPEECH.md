@@ -220,3 +220,4 @@ OPENAI_API_KEY=votre-cle-openai-ici
 - La qualité audio dépend du modèle choisi (`tts-1` vs `tts-1-hd`)
 - Les coûts varient selon la longueur du texte et le modèle utilisé
 
+
