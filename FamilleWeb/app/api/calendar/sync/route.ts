@@ -90,7 +90,6 @@ export async function POST(req: NextRequest) {
                 console.log(`Event type: ${event.type}`)
                 console.log(`Event start (raw): ${event.start}`)
                 console.log(`Event end (raw): ${event.end || '(none)'}`)
-                console.log(`Event duration: ${event.duration || '(none)'}`)
 
                 if (!event.start) {
                     console.log('SKIPPED: No start date')

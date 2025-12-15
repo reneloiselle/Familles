@@ -25,6 +25,8 @@ interface SharedListItem {
   quantity: string | null
   notes: string | null
   created_by: string
+  created_at: string
+  updated_at: string
   checked_at: string | null
   checked_by: string | null
 }
@@ -126,10 +128,11 @@ export function SharedListsManagement({ user, familyId }: SharedListsManagementP
           },
           (payload) => {
             if (payload.eventType === 'INSERT') {
-              setItems((prev) => {
-                const newItems = [...prev, payload.new as SharedListItem]
+              setItems((prev: SharedListItem[]) => {
+                const newItem: SharedListItem = payload.new as SharedListItem
+                const newItems: SharedListItem[] = [...prev, newItem]
                 // Sort by checked status, then by created_at
-                return newItems.sort((a, b) => {
+                return newItems.sort((a: SharedListItem, b: SharedListItem) => {
                   if (a.checked !== b.checked) {
                     return a.checked ? 1 : -1
                   }
@@ -137,10 +140,10 @@ export function SharedListsManagement({ user, familyId }: SharedListsManagementP
                 })
               })
             } else if (payload.eventType === 'UPDATE') {
-              setItems((prev) =>
-                prev.map((item) =>
+              setItems((prev: SharedListItem[]) =>
+                prev.map((item: SharedListItem): SharedListItem =>
                   item.id === payload.new.id ? (payload.new as SharedListItem) : item
-                ).sort((a, b) => {
+                ).sort((a: SharedListItem, b: SharedListItem) => {
                   if (a.checked !== b.checked) {
                     return a.checked ? 1 : -1
                   }

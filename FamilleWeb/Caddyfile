@@ -1,0 +1,39 @@
+assistantfamilleai.ca {
+	# Reverse proxy vers l'application Next.js
+	reverse_proxy localhost:3000 {
+		# Header pour Next.js (X-Real-IP est nécessaire)
+		header_up X-Real-IP {remote_host}
+
+		# Timeout pour les requêtes longues (par exemple pour les API streaming)
+		transport http {
+			dial_timeout 60s
+			response_header_timeout 60s
+		}
+	}
+
+	# Compression
+	encode gzip zstd
+
+	# Headers de sécurité
+	header {
+		# Protection XSS
+		X-XSS-Protection "1; mode=block"
+		# Empêcher le MIME sniffing
+		X-Content-Type-Options "nosniff"
+		# Politique de référent
+		Referrer-Policy "strict-origin-when-cross-origin"
+		# Politique de permissions
+		Permissions-Policy "geolocation=(), microphone=(), camera=()"
+	}
+
+	# Logging
+	log {
+		output file /var/log/caddy/assistantfamilleai.ca.log
+		format json
+	}
+}
+
+# Redirection www vers non-www (optionnel - commenté si problème)
+# www.assistantfamilleai.ca {
+# 	redir https://assistantfamilleai.ca{uri} permanent
+# }

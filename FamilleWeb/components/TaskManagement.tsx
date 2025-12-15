@@ -226,6 +226,7 @@ export function TaskManagement({
             description: '',
             assigned_to: '',
             due_date: '',
+            priority: 'medium',
           })
         } else if (showForm) {
           setShowForm(false)
@@ -311,6 +312,7 @@ export function TaskManagement({
       description: '',
       assigned_to: '',
       due_date: '',
+      priority: 'medium',
     })
   }
 
