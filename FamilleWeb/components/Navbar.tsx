@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/app/providers'
 import { createClient } from '@/lib/supabase/client'
-import { Calendar, Users, CheckSquare, LogOut, Home, List, Key, Menu, X, User } from 'lucide-react'
+import { Calendar, Users, CheckSquare, LogOut, Home, List, Menu, X, User } from 'lucide-react'
 
 export function Navbar() {
   const { user, loading } = useAuth()
@@ -51,7 +51,6 @@ export function Navbar() {
   const allNavItems = [
     { href: '/dashboard', icon: Home, label: 'Accueil' },
     ...mainNavItems,
-    { href: '/dashboard/api-keys', icon: Key, label: 'Clés API' },
   ]
 
   return (
@@ -99,7 +98,7 @@ export function Navbar() {
                 )
               })}
               
-              {/* Accueil et Clés API (moins visibles) */}
+              {/* Accueil */}
               <Link
                 href="/dashboard"
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
@@ -110,18 +109,6 @@ export function Navbar() {
               >
                 <Home className="w-5 h-5" />
                 <span className="hidden lg:inline">Accueil</span>
-              </Link>
-              
-              <Link
-                href="/dashboard/api-keys"
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
-                  pathname === '/dashboard/api-keys'
-                    ? 'text-primary-600 bg-primary-50 font-medium'
-                    : 'text-gray-600 hover:text-primary-600 hover:bg-gray-50'
-                }`}
-              >
-                <Key className="w-5 h-5" />
-                <span className="hidden lg:inline">Clés API</span>
               </Link>
               
               {/* Déconnexion */}

@@ -716,28 +716,27 @@ Appuyez sur Ctrl+Entrée pour ajouter"
               )}
               
               {items.length > 0 && (
-                <div className="space-y-2">
+                <div className="space-y-0">
                   {items.map((item) => (
                     <div
                       key={item.id}
-                      className={`flex items-start gap-3 p-3 rounded-lg border ${
-                        item.checked
-                          ? 'bg-gray-50 border-gray-200'
-                          : 'bg-white border-gray-300'
+                      className={`group flex items-center gap-1.5 py-0.5 px-1 hover:bg-gray-50 ${
+                        item.checked ? 'opacity-60' : ''
                       }`}
                     >
                       <button
                         onClick={() => toggleItem(item)}
-                        className="mt-1 flex-shrink-0"
+                        className="flex-shrink-0 -ml-0.5"
                         disabled={loading}
+                        aria-label={item.checked ? 'Décocher' : 'Cocher'}
                       >
                         {item.checked ? (
-                          <CheckCircle2 className="w-5 h-5 text-green-600" />
+                          <CheckCircle2 className="w-4 h-4 text-green-600" />
                         ) : (
-                          <Circle className="w-5 h-5 text-gray-400" />
+                          <Circle className="w-4 h-4 text-gray-400" />
                         )}
                       </button>
-                      <div className="flex-1">
+                      <div className="flex-1 min-w-0">
                         {editingItemId === item.id ? (
                           <input
                             type="text"
@@ -752,38 +751,30 @@ Appuyez sur Ctrl+Entrée pour ajouter"
                                 cancelEditItem()
                               }
                             }}
-                            className="input w-full"
+                            className="input w-full py-0.5 px-1 text-sm h-6"
                             autoFocus
                           />
                         ) : (
-                          <p
+                          <label
                             onDoubleClick={() => !item.checked && startEditItem(item)}
-                            className={`${
+                            className={`block cursor-pointer select-none text-sm leading-tight ${
                               item.checked
                                 ? 'line-through text-gray-500'
-                                : 'text-gray-900 cursor-pointer hover:bg-gray-50 -mx-2 px-2 py-1 rounded'
+                                : 'text-gray-900'
                             }`}
                             title={item.checked ? '' : 'Double-cliquez pour modifier'}
                           >
                             {item.text}
-                          </p>
-                        )}
-                        {(item.quantity || item.notes) && editingItemId !== item.id && (
-                          <div className="flex gap-4 mt-1 text-sm text-gray-600">
-                            {item.quantity && (
-                              <span className="font-medium">{item.quantity}</span>
-                            )}
-                            {item.notes && <span>{item.notes}</span>}
-                          </div>
+                          </label>
                         )}
                       </div>
                       {editingItemId !== item.id && (
                         <button
                           onClick={() => deleteItem(item.id)}
-                          className="text-red-600 hover:text-red-800 p-1 flex-shrink-0"
+                          className="text-red-600 hover:text-red-800 p-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
                           title="Supprimer"
                         >
-                          <X className="w-4 h-4" />
+                          <X className="w-3.5 h-3.5" />
                         </button>
                       )}
                     </div>
