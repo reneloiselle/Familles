@@ -98,7 +98,7 @@ flutter run -d ios
 # Cibler un appareil précis
 flutter run -d <device-id>
 ```
-
+ba
 ### 5. Construire pour la production
 
 ```bash
