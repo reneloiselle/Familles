@@ -4,10 +4,10 @@
 /// Vous pouvez les obtenir depuis: Settings > API dans votre projet Supabase
 class SupabaseConfig {
   // TODO: Remplacez par votre URL Supabase
-  static const String url = 'https://zoremxppfoiatdaxgukx.supabase.co';
+  static const String url = 'https://evneffktqnorlszypyjg.supabase.co';
   
   // TODO: Remplacez par votre clé anonyme Supabase (anon key)
-  static const String anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpvcmVteHBwZm9pYXRkYXhndWt4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQzNTY5NTcsImV4cCI6MjA3OTkzMjk1N30.yBbJSYOzejO4r-lC6Mntd2t4BEE2_CHTnRQL_EmVsH8';
+  static const String anonKey = 'sb_publishable_lfcrrL336X_wq8r_LY0ccg_VRoEaelW';
 }
 
 /// Configuration Google Maps
@@ -45,7 +45,7 @@ class ApiConfig {
   // 
   // Votre IP locale détectée: 10.0.0.122
   // Si vous utilisez un appareil physique, utilisez cette IP:
-  static const String baseUrl = 'http://10.0.0.122:3000';
+  static const String baseUrl = 'http://10.0.0.97:3000';
   
   // Pour simulateur iOS (sur macOS):
   // static const String baseUrl = 'http://localhost:3000';
