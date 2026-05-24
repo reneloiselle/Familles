@@ -8,21 +8,13 @@ import { User } from '@supabase/supabase-js'
 import { CalendarSubscriptionManager } from './CalendarSubscriptionManager'
 import { LocationPicker } from './LocationPicker'
 import { LocationViewer } from './LocationViewer'
-
-// Helper function pour obtenir la date locale au format YYYY-MM-DD sans problème de fuseau horaire
-function getLocalDateString(date?: Date): string {
-  const d = date || new Date()
-  const year = d.getFullYear()
-  const month = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
-// Helper function pour créer une date locale à partir d'une chaîne YYYY-MM-DD
-function parseLocalDate(dateStr: string): Date {
-  const [year, month, day] = dateStr.split('-').map(Number)
-  return new Date(year, month - 1, day)
-}
+import {
+  getLocalDateString,
+  getWeekStart,
+  getWeekEnd,
+  getWeekDays,
+  parseLocalDate,
+} from '@/lib/schedule/dateUtils'
 
 interface Schedule {
   id: string
@@ -132,14 +124,6 @@ export function ScheduleManagement({
     loadSubscriptions()
   }, [familyMembers])
 
-  const getWeekStart = (dateStr: string) => {
-    const date = parseLocalDate(dateStr)
-    const day = date.getDay()
-    const monday = new Date(date)
-    monday.setDate(date.getDate() - day + (day === 0 ? -6 : 1))
-    return getLocalDateString(monday)
-  }
-
   // Recharger les horaires quand la date ou la vue change
   useEffect(() => {
     const loadSchedules = async () => {
@@ -164,11 +148,8 @@ export function ScheduleManagement({
         query = query.gte('date', today).lte('date', endDateStr)
       } else if (view === 'week') {
         const weekStart = getWeekStart(selectedDate)
-        const weekEnd = new Date(weekStart)
-        weekEnd.setDate(weekEnd.getDate() + 6)
-        query = query.gte('date', weekStart).lte('date', getLocalDateString(weekEnd))
+        query = query.gte('date', weekStart).lte('date', getWeekEnd(weekStart))
       }
-      // Pour 'personal', on filtre côté client
 
       const { data, error } = await query
         .order('date', { ascending: true })
@@ -241,11 +222,8 @@ export function ScheduleManagement({
         reloadQuery = reloadQuery.gte('date', today).lte('date', endDateStr)
       } else if (view === 'week') {
         const weekStart = getWeekStart(selectedDate)
-        const weekEnd = new Date(weekStart)
-        weekEnd.setDate(weekEnd.getDate() + 6)
-        reloadQuery = reloadQuery.gte('date', weekStart).lte('date', getLocalDateString(weekEnd))
+        reloadQuery = reloadQuery.gte('date', weekStart).lte('date', getWeekEnd(weekStart))
       }
-      // Pour 'personal', on recharge tout et on filtre côté client
 
       const { data: updatedSchedules } = await reloadQuery
         .order('date', { ascending: true })
@@ -338,9 +316,7 @@ export function ScheduleManagement({
         reloadQuery = reloadQuery.gte('date', today).lte('date', endDateStr)
       } else if (view === 'week') {
         const weekStart = getWeekStart(selectedDate)
-        const weekEnd = new Date(weekStart)
-        weekEnd.setDate(weekEnd.getDate() + 6)
-        reloadQuery = reloadQuery.gte('date', weekStart).lte('date', getLocalDateString(weekEnd))
+        reloadQuery = reloadQuery.gte('date', weekStart).lte('date', getWeekEnd(weekStart))
       }
 
       const { data: updatedSchedules } = await reloadQuery
@@ -384,23 +360,6 @@ export function ScheduleManagement({
     } finally {
       setLoading(false)
     }
-  }
-
-  // Calculate week days (Monday to Sunday)
-  const getWeekDays = (dateStr: string) => {
-    const date = parseLocalDate(dateStr)
-    const day = date.getDay()
-    const diff = date.getDate() - day + (day === 0 ? -6 : 1) // Adjust when day is Sunday (0)
-    const monday = new Date(date)
-    monday.setDate(date.getDate() - day + (day === 0 ? -6 : 1))
-
-    const days = []
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(monday)
-      d.setDate(monday.getDate() + i)
-      days.push(getLocalDateString(d))
-    }
-    return days
   }
 
   const weekDays = view === 'week' ? getWeekDays(selectedDate) : []

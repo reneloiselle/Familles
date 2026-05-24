@@ -2,8 +2,9 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import { acceptPendingInvitations } from '@/lib/invitations'
 
 export default function SignupPage() {
   const [email, setEmail] = useState('')
@@ -12,6 +13,8 @@ export default function SignupPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const redirectTo = searchParams.get('redirect') || '/dashboard'
   const supabase = createClient()
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -38,7 +41,8 @@ export default function SignupPage() {
 
       if (error) throw error
 
-      router.push('/dashboard')
+      await acceptPendingInvitations(supabase)
+      router.push(redirectTo)
       router.refresh()
     } catch (error: any) {
       setError(error.message || 'Une erreur est survenue')
@@ -122,7 +126,10 @@ export default function SignupPage() {
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-600">
               Déjà un compte ?{' '}
-              <Link href="/auth/login" className="text-primary-600 hover:underline">
+              <Link
+                href={redirectTo !== '/dashboard' ? `/auth/login?redirect=${encodeURIComponent(redirectTo)}` : '/auth/login'}
+                className="text-primary-600 hover:underline"
+              >
                 Se connecter
               </Link>
             </p>

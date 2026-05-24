@@ -1,21 +1,11 @@
 import { createServerClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { ScheduleManagement } from '@/components/ScheduleManagement'
-
-// Helper function pour obtenir la date locale au format YYYY-MM-DD sans problème de fuseau horaire
-function getLocalDateString(date?: Date): string {
-  const d = date || new Date()
-  const year = d.getFullYear()
-  const month = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
-// Helper function pour créer une date locale à partir d'une chaîne YYYY-MM-DD
-function parseLocalDate(dateStr: string): Date {
-  const [year, month, day] = dateStr.split('-').map(Number)
-  return new Date(year, month - 1, day)
-}
+import {
+  getLocalDateString,
+  getWeekStart,
+  getWeekEnd,
+} from '@/lib/schedule/dateUtils'
 
 async function getUserFamily(supabase: any, userId: string) {
   const { data } = await supabase
@@ -58,10 +48,7 @@ async function getSchedules(
   } else if (date) {
     query = query.eq('date', date)
   } else if (weekStart) {
-    // Get schedules for the week (7 days starting from weekStart)
-    const weekEnd = parseLocalDate(weekStart)
-    weekEnd.setDate(weekEnd.getDate() + 6)
-    query = query.gte('date', weekStart).lte('date', getLocalDateString(weekEnd))
+    query = query.gte('date', weekStart).lte('date', getWeekEnd(weekStart))
   }
 
   const { data, error } = await query.order('date', { ascending: true }).order('start_time', { ascending: true })
@@ -98,16 +85,6 @@ export default async function SchedulePage({
   const selectedDate = searchParams.date || getLocalDateString()
   const view = searchParams.view || (familyMember.role === 'parent' ? 'family' : 'personal')
 
-  // Calculate week start (Monday of the week containing selectedDate)
-  const getWeekStart = (dateStr: string) => {
-    const date = parseLocalDate(dateStr)
-    const day = date.getDay()
-    const diff = date.getDate() - day + (day === 0 ? -6 : 1) // Adjust when day is Sunday
-    const monday = new Date(date)
-    monday.setDate(date.getDate() - day + (day === 0 ? -6 : 1))
-    return getLocalDateString(monday)
-  }
-
   // Pour la vue family, calculer la plage de 7 jours à partir d'aujourd'hui
   const today = getLocalDateString()
   const endDate = new Date()
@@ -117,13 +94,10 @@ export default async function SchedulePage({
   const weekStart = view === 'week' ? getWeekStart(selectedDate) : undefined
   const familyDateRange = view === 'family' ? { start: today, end: endDateStr } : undefined
 
-  // For family view, get all schedules for the next 7 days from today
-  // For week view, get all schedules for the week
-  // For personal view, get all schedules without date filter (filtered client-side)
   const schedules = await getSchedules(
     supabase,
     familyMemberIds,
-    view === 'family' ? undefined : (view === 'week' ? undefined : selectedDate),
+    view === 'family' ? undefined : view === 'week' ? undefined : selectedDate,
     weekStart,
     familyDateRange
   )

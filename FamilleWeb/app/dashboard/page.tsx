@@ -1,7 +1,7 @@
 import { createServerClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Calendar, Users, CheckSquare, Plus, List } from 'lucide-react'
+import { Calendar, CalendarDays, Users, CheckSquare, Plus, List } from 'lucide-react'
 
 async function getUserFamily(supabase: any, userId: string) {
   const { data } = await supabase
@@ -103,7 +103,7 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
         <Link href="/dashboard/family" className="card group">
           <div className="flex flex-col sm:flex-row items-center sm:items-center gap-3">
             <div className="bg-gradient-to-br from-primary-100 to-primary-200 p-3 rounded-xl group-hover:scale-110 transition-transform duration-200">
@@ -116,6 +116,18 @@ export default async function DashboardPage() {
           </div>
         </Link>
         
+        <Link href="/dashboard/planning" className="card group">
+          <div className="flex flex-col sm:flex-row items-center sm:items-center gap-3">
+            <div className="bg-gradient-to-br from-teal-100 to-teal-200 p-3 rounded-xl group-hover:scale-110 transition-transform duration-200">
+              <CalendarDays className="w-5 h-5 sm:w-6 sm:h-6 text-teal-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-semibold text-sm sm:text-base truncate">Planning</h3>
+              <p className="text-xs sm:text-sm text-gray-600 hidden sm:block">Grille semaine famille</p>
+            </div>
+          </div>
+        </Link>
+
         <Link href="/dashboard/schedule" className="card group">
           <div className="flex flex-col sm:flex-row items-center sm:items-center gap-3">
             <div className="bg-gradient-to-br from-blue-100 to-blue-200 p-3 rounded-xl group-hover:scale-110 transition-transform duration-200">
@@ -123,7 +135,7 @@ export default async function DashboardPage() {
             </div>
             <div className="flex-1 min-w-0">
               <h3 className="font-semibold text-sm sm:text-base truncate">Horaires</h3>
-              <p className="text-xs sm:text-sm text-gray-600 hidden sm:block">Voir les agendas</p>
+              <p className="text-xs sm:text-sm text-gray-600 hidden sm:block">iCal et listes</p>
             </div>
           </div>
         </Link>
@@ -157,8 +169,8 @@ export default async function DashboardPage() {
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg sm:text-xl font-semibold">Prochains événements</h2>
-            <Link href="/dashboard/schedule" className="text-primary-600 hover:text-primary-700 text-sm font-medium transition-colors">
-              Voir tout →
+            <Link href="/dashboard/planning" className="text-primary-600 hover:text-primary-700 text-sm font-medium transition-colors">
+              Planning →
             </Link>
           </div>
           {upcomingSchedules.length === 0 ? (

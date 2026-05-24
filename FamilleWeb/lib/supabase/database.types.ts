@@ -309,6 +309,10 @@ export interface Database {
         }
         Returns: string
       }
+      accept_pending_invitations: {
+        Args: Record<string, never>
+        Returns: number
+      }
       can_user_view_family: {
         Args: {
           p_family_id: string

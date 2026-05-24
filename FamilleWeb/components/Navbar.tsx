@@ -3,9 +3,64 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
+import type { User as SupabaseUser } from '@supabase/supabase-js'
 import { useAuth } from '@/app/providers'
 import { createClient } from '@/lib/supabase/client'
-import { Calendar, Users, CheckSquare, LogOut, Home, List, Menu, X, User } from 'lucide-react'
+import { Calendar, CalendarDays, Users, CheckSquare, LogOut, Home, List, Menu, X, User } from 'lucide-react'
+
+function getUserDisplayName(user: SupabaseUser, memberName?: string | null) {
+  if (memberName?.trim()) return memberName.trim()
+  const meta = user.user_metadata
+  const fromMeta =
+    (typeof meta?.full_name === 'string' && meta.full_name) ||
+    (typeof meta?.name === 'string' && meta.name)
+  if (fromMeta) return fromMeta
+  if (user.email) return user.email.split('@')[0]
+  return 'Utilisateur'
+}
+
+function UserIdentity({
+  user,
+  memberName,
+  compact = false,
+}: {
+  user: SupabaseUser
+  memberName?: string | null
+  compact?: boolean
+}) {
+  const displayName = getUserDisplayName(user, memberName)
+  const initial = displayName.charAt(0).toUpperCase()
+
+  if (compact) {
+    return (
+      <div
+        className="flex items-center gap-2 min-w-0 max-w-[120px] sm:max-w-[140px]"
+        title={user.email ?? displayName}
+      >
+        <div className="w-9 h-9 bg-gradient-to-br from-primary-500 to-primary-600 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm">
+          <span className="text-sm font-semibold text-white">{initial}</span>
+        </div>
+        <span className="text-sm font-medium text-gray-800 truncate">
+          {displayName}
+        </span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-2.5 min-w-0 max-w-[200px] lg:max-w-[240px] border-l border-gray-200 pl-4">
+      <div className="w-9 h-9 bg-gradient-to-br from-primary-500 to-primary-600 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm">
+        <span className="text-sm font-semibold text-white">{initial}</span>
+      </div>
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-gray-900 truncate">{displayName}</p>
+        {user.email && (
+          <p className="text-xs text-gray-500 truncate hidden lg:block">{user.email}</p>
+        )}
+      </div>
+    </div>
+  )
+}
 
 export function Navbar() {
   const { user, loading } = useAuth()
@@ -13,12 +68,35 @@ export function Navbar() {
   const pathname = usePathname()
   const supabase = createClient()
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [memberName, setMemberName] = useState<string | null>(null)
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
     router.push('/')
     setIsMenuOpen(false)
   }
+
+  useEffect(() => {
+    if (!user) {
+      setMemberName(null)
+      return
+    }
+    let cancelled = false
+    const loadMemberName = async () => {
+      const { data } = await supabase
+        .from('family_members')
+        .select('name')
+        .eq('user_id', user.id)
+        .maybeSingle()
+      if (!cancelled) {
+        setMemberName(data?.name ?? null)
+      }
+    }
+    void loadMemberName()
+    return () => {
+      cancelled = true
+    }
+  }, [user, supabase])
 
   // Fermer le menu quand on change de page
   useEffect(() => {
@@ -43,6 +121,7 @@ export function Navbar() {
 
   const mainNavItems = [
     { href: '/dashboard/family', icon: Users, label: 'Famille' },
+    { href: '/dashboard/planning', icon: CalendarDays, label: 'Planning' },
     { href: '/dashboard/schedule', icon: Calendar, label: 'Horaires' },
     { href: '/dashboard/tasks', icon: CheckSquare, label: 'Tâches' },
     { href: '/dashboard/lists', icon: List, label: 'Listes' },
@@ -111,6 +190,8 @@ export function Navbar() {
                 <span className="hidden lg:inline">Accueil</span>
               </Link>
               
+              <UserIdentity user={user} memberName={memberName} />
+
               {/* Déconnexion */}
               <button
                 onClick={handleSignOut}
@@ -121,8 +202,10 @@ export function Navbar() {
               </button>
             </div>
 
-            {/* Espaceur pour mobile (pour équilibrer le bouton hamburger à gauche) */}
-            <div className="md:hidden w-10" />
+            {/* Identification utilisateur (mobile, barre du haut) */}
+            <div className="md:hidden flex-shrink-0">
+              <UserIdentity user={user} memberName={memberName} compact />
+            </div>
           </div>
         </div>
       </nav>
@@ -153,10 +236,10 @@ export function Navbar() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-gray-900 truncate text-base">
-                      {user?.email?.split('@')[0] || 'Utilisateur'}
+                      {getUserDisplayName(user, memberName)}
                     </p>
                     <p className="text-sm text-gray-500 truncate">
-                      {user?.email}
+                      {user.email}
                     </p>
                   </div>
                 </div>

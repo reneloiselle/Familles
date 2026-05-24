@@ -81,10 +81,16 @@ export default function AcceptInvitationPage() {
               Vous devez être connecté pour accepter cette invitation.
             </p>
             <div className="flex gap-4 justify-center">
-              <Link href={`/auth/login?redirect=/invitation/accept?token=${token}`} className="btn btn-primary">
+              <Link
+                href={`/auth/login?redirect=${encodeURIComponent(`/invitation/accept?token=${token}`)}`}
+                className="btn btn-primary"
+              >
                 Se connecter
               </Link>
-              <Link href={`/auth/signup?redirect=/invitation/accept?token=${token}`} className="btn btn-secondary">
+              <Link
+                href={`/auth/signup?redirect=${encodeURIComponent(`/invitation/accept?token=${token}`)}`}
+                className="btn btn-secondary"
+              >
                 Créer un compte
               </Link>
             </div>

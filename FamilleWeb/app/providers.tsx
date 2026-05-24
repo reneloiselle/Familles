@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { User } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
+import { acceptPendingInvitations } from '@/lib/invitations'
 
 interface AuthContextType {
   user: User | null
@@ -29,6 +30,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
       async (_event, session) => {
         setUser(session?.user ?? null)
         setLoading(false)
+        if (session?.user) {
+          await acceptPendingInvitations(supabase)
+        }
       }
     )
 
