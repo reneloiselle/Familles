@@ -1,6 +1,6 @@
 # FamilleWeb
 
-Application web (Next.js) pour gérer votre famille, organiser les horaires et coordonner les tâches.
+Application web (Next.js 14 / App Router) pour gérer votre famille, organiser les horaires, coordonner les tâches et partager des listes. Elle s’appuie sur **Supabase** (PostgreSQL + Auth + Realtime).
 
 ## Sommaire
 
@@ -19,22 +19,18 @@ Application web (Next.js) pour gérer votre famille, organiser les horaires et c
 
 ## Fonctionnalités
 
-- 👨‍👩‍👧‍👦 **Gestion de famille** : Créez votre famille et invitez les membres avec des rôles (parent/enfant)
-- 📅 **Horaires synchronisés** : Gérez les horaires de chaque membre avec une vue complète pour les parents
-- 🔄 **Synchronisation calendrier** : Importez des calendriers externes via flux iCal (Google Calendar, Apple Calendar…)
-- ✅ **Tâches assignées** : Créez et assignez des tâches avec priorité et statut
-- 📝 **Listes partagées** : Listes collaboratives (courses, to-do…) avec cases à cocher
-- 🤖 **Chat IA** : Assistant côté serveur (texte, streaming, synthèse vocale TTS) — clé OpenAI non exposée
-- 📍 **Localisation** : Ajoutez un lieu à vos événements via Google Maps
-- 🖼️ **Avatars** : Chaque membre de la famille peut avoir un avatar personnalisé
-- 🔑 **Gestion des clés API** : Interface pour gérer vos clés d'intégration directement depuis le dashboard
-- 📱 **Interface responsive** : Navigation adaptée mobile (header et sidebar dédiés)
-- 🔐 **Authentification sécurisée** : Authentification et invitations via Supabase Auth
-- ⚡ **Realtime** : Mises à jour instantanées pour les tâches, les agendas et les listes partagées
+- **Gestion de famille** : création de famille, rôles, invitations
+- **Horaires** : agenda par membre + vue famille, import iCal
+- **Tâches** : assignation, priorités, statuts
+- **Listes partagées** : listes collaboratives avec items cochables
+- **Chat IA (serveur)** : chat, streaming, TTS (clé OpenAI côté serveur)
+- **Localisation** : lieu sur les événements (Google Maps)
+- **Clés API** : gestion de clés pour intégrations / MCP
+- **Auth + Realtime** : Supabase Auth et mises à jour en temps réel
 
 ## Stack technologique
 
-- **Next.js 14** : Framework React avec App Router
+- **Next.js 14** : Framework React (App Router)
 - **TypeScript** : Typage statique
 - **Supabase** : Base de données PostgreSQL, authentification et Realtime
 - **Tailwind CSS** : Framework CSS utilitaire
@@ -87,6 +83,27 @@ L'application est accessible sur `http://localhost:3000`.
 
 Note : le script `dev` lance Next avec `-H 0.0.0.0`, donc l'app peut aussi être accessible depuis votre réseau local (selon votre pare-feu).
 
+## Configuration (variables d'environnement)
+
+Variables utilisées par le code (voir `lib/supabase/*` et `app/api/*`) :
+
+| Variable | Obligatoire | Utilisée où | Description |
+|---|---:|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | ✅ | client + serveur | URL du projet Supabase |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | client + serveur | Clé publique Supabase (côté client) |
+| `SUPABASE_SERVICE_ROLE_KEY` | ✅* | routes serveur | Requise pour les opérations backend privilégiées (ex. sync iCal, gestion clés API) |
+| `OPENAI_API_KEY` | optionnel | routes chat | Active `/api/chat`, `/api/chat/stream`, `/api/chat/tts` |
+| `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` | optionnel | UI | Active le sélecteur de lieu Google Maps |
+
+\* `SUPABASE_SERVICE_ROLE_KEY` est nécessaire si vous utilisez :
+- `app/api/calendar/sync/route.ts` (synchronisation iCal)
+- `app/api/mcp/route.ts` (gestion des clés API / intégrations)
+
+Sécurité :
+
+- **Ne commitez jamais** vos fichiers `.env*`, ni une clé `service_role`.
+- Le fichier `appparm` contient des exemples (et peut contenir des valeurs sensibles). **Ne le considérez pas comme une config sûre** et évitez d’y mettre de vraies clés.
+
 ## Structure du projet
 
 ```
@@ -106,7 +123,7 @@ FamilleWeb/
 │   │   ├── chat/               # Chat (route principale)
 │   │   │   ├── stream/         # Chat en streaming
 │   │   │   └── tts/            # Synthèse vocale
-│   │   └── mcp/                # Proxy MCP
+│   │   └── mcp/                # Gestion des clés API / intégrations
 │   ├── layout.tsx
 │   ├── providers.tsx
 │   └── page.tsx
@@ -131,21 +148,6 @@ FamilleWeb/
 └── package.json
 ```
 
-## Configuration (variables d'environnement)
-
-| Variable | Obligatoire | Description |
-|---|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | ✅ | URL de votre projet Supabase |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | Clé publique Supabase (côté client) |
-| `SUPABASE_SERVICE_ROLE_KEY` | ✅ | Clé service role (routes serveur uniquement, ne jamais exposer) |
-| `OPENAI_API_KEY` | Optionnel | Requis pour le chat, le streaming et le TTS |
-| `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` | Optionnel | Requis pour la localisation des événements |
-
-Sécurité :
-
-- **Ne commitez jamais** vos fichiers `.env*`.
-- Le repo contient un fichier `appparm` avec des exemples de variables. **Ne le considérez pas comme une config sûre**.
-
 ## Supabase (base de données & migrations)
 
 1. **Créer un projet Supabase** sur [supabase.com](https://supabase.com).
@@ -153,29 +155,7 @@ Sécurité :
    - Project URL → `NEXT_PUBLIC_SUPABASE_URL`
    - anon/public key → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
    - service_role key → `SUPABASE_SERVICE_ROLE_KEY`
-3. **Exécuter les migrations** dans *SQL Editor*, **dans l'ordre numérique** :
-
-| Fichier | Description |
-|---|---|
-| `001_initial_schema.sql` | Schéma initial (families, members, schedules, tasks) |
-| `002_add_user_email_function.sql` | Fonction email utilisateur |
-| `003_fix_family_members_rls.sql` | Correction RLS membres |
-| `004_fix_families_rls.sql` | Correction RLS familles |
-| `005_add_invitations_system.sql` | Système d'invitations |
-| `006_update_rls_for_members_without_accounts.sql` | RLS membres sans compte |
-| `007_fix_invitations_rls_auth_users.sql` | Correction RLS invitations |
-| `008_fix_schedules_rls_for_all_members.sql` | RLS agendas pour tous les membres |
-| `009_add_shared_lists.sql` | Listes partagées |
-| `010_enable_realtime_shared_lists.sql` | Realtime listes partagées |
-| `011_enable_realtime_tasks.sql` | Realtime tâches |
-| `012_enable_realtime_schedules.sql` | Realtime agendas |
-| `013_add_avatar_to_members.sql` | Avatars des membres |
-| `014_add_calendar_subscriptions.sql` | Abonnements calendrier iCal |
-| `015_update_schedules_for_sync.sql` | Mise à jour schema pour sync iCal |
-| `016_add_chat_conversations.sql` | Historique des conversations chat |
-| `017_simplify_task_status.sql` | Simplification des statuts de tâches |
-| `018_add_task_priority.sql` | Priorités des tâches |
-| `019_add_location_to_schedules.sql` | Localisation des événements agenda |
+3. **Exécuter les migrations** dans *SQL Editor*, **dans l'ordre numérique** (dossier `supabase/migrations/`).
 
 Toutes les tables sont protégées via Row Level Security (RLS).
 
@@ -227,20 +207,21 @@ Références :
 
 ## Serveur MCP
 
-Le projet inclut un serveur MCP (Model Context Protocol) dans le dossier `mcp-server/`. Il expose des outils pour interagir avec les données Familles depuis un assistant IA (ex. Cursor) :
+Le repo inclut un serveur MCP (Model Context Protocol) dans le dossier `mcp-server/`. Il expose des outils pour interagir avec les données Familles depuis un assistant IA (ex. Cursor) :
 
 - Gestion des tâches (`get_tasks`, `create_task`, `update_task_status`, `delete_task`)
 - Gestion de l'agenda (`get_schedules`, `create_schedule`, `delete_schedule`)
 - Listes partagées (`get_shared_lists`, `create_shared_list`, `get_shared_list_items`, etc.)
+- Clés API (`create_api_key`, `list_api_keys`, `revoke_api_key`, `delete_api_key`)
 
-L'application web expose également une route `/api/mcp` (proxy MCP) pour les intégrations directes.
+L'application web expose également une route `app/api/mcp/route.ts` qui sert à gérer des clés API depuis l’interface (création/liste/révocation/suppression). Ce n’est pas le serveur MCP lui‑même : le serveur MCP vit dans `mcp-server/` et communique via **stdio** avec le client MCP.
 
 Voir `mcp-server/README.md` pour l'installation et la configuration.
 
 ## Docs du repo
 
-- `GETTING_STARTED.md` : guide de démarrage (Supabase + exécution)
-- `GOOGLE_MAPS_SETUP.md` : activer Google Maps (clé API)
+- `archives/plans/GETTING_STARTED.md` : notes de démarrage (Supabase + exécution)
+- `archives/plans/GOOGLE_MAPS_SETUP.md` : notes d’activation Google Maps (clé API)
 - `OPENAI_SERVER_SETUP.md` : activer le chat côté serveur (clé OpenAI)
 - `DOCKER.md` : build et déploiement Docker/Podman
 - `CADDY_SETUP.md` : configuration reverse-proxy Caddy

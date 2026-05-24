@@ -36,6 +36,15 @@ interface SharedListsManagementProps {
   familyId: string
 }
 
+function sortItems(items: SharedListItem[]): SharedListItem[] {
+  return [...items].sort((a, b) => {
+    if (a.checked !== b.checked) {
+      return a.checked ? 1 : -1
+    }
+    return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  })
+}
+
 export function SharedListsManagement({ user, familyId }: SharedListsManagementProps) {
   const [lists, setLists] = useState<SharedList[]>([])
   const [selectedList, setSelectedList] = useState<SharedList | null>(null)
@@ -60,42 +69,46 @@ export function SharedListsManagement({ user, familyId }: SharedListsManagementP
   useEffect(() => {
     loadLists()
 
-    // Subscribe to realtime changes for shared_lists
+    // Pas de filtre serveur : les DELETE ne passent pas les filtres postgres_changes
     const listsChannel = supabase
-      .channel('shared_lists_changes')
+      .channel(`shared_lists_changes_${familyId}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'shared_lists',
-          filter: `family_id=eq.${familyId}`,
         },
         (payload) => {
           if (payload.eventType === 'INSERT') {
-            setLists((prev) => [payload.new as SharedList, ...prev].sort((a, b) => 
-              new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-            ))
-          } else if (payload.eventType === 'UPDATE') {
-            setLists((prev) =>
-              prev.map((list) =>
-                list.id === payload.new.id ? (payload.new as SharedList) : list
-              ).sort((a, b) => 
-                new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+            const newList = payload.new as SharedList
+            if (newList.family_id !== familyId) return
+            setLists((prev) => {
+              if (prev.some((list) => list.id === newList.id)) return prev
+              return [newList, ...prev].sort(
+                (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
               )
-            )
-            // Update selected list if it was updated
-            setSelectedList((current) => {
-              if (current && current.id === payload.new.id) {
-                return payload.new as SharedList
-              }
-              return current
             })
+          } else if (payload.eventType === 'UPDATE') {
+            const updated = payload.new as SharedList
+            if (updated.family_id !== familyId) return
+            setLists((prev) =>
+              prev
+                .map((list) => (list.id === updated.id ? updated : list))
+                .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+            )
+            setSelectedList((current) =>
+              current?.id === updated.id ? updated : current
+            )
           } else if (payload.eventType === 'DELETE') {
-            setLists((prev) => prev.filter((list) => list.id !== payload.old.id))
-            // Clear selected list if it was deleted
+            const deletedId = (payload.old as SharedList | undefined)?.id
+            if (!deletedId) return
+            setLists((prev) => {
+              if (!prev.some((list) => list.id === deletedId)) return prev
+              return prev.filter((list) => list.id !== deletedId)
+            })
             setSelectedList((current) => {
-              if (current && current.id === payload.old.id) {
+              if (current?.id === deletedId) {
                 setItems([])
                 return null
               }
@@ -112,56 +125,51 @@ export function SharedListsManagement({ user, familyId }: SharedListsManagementP
   }, [familyId, supabase])
 
   useEffect(() => {
-    if (selectedList) {
-      loadItems(selectedList.id)
+    if (!selectedList) return
 
-      // Subscribe to realtime changes for shared_list_items
-      const itemsChannel = supabase
-        .channel(`shared_list_items_${selectedList.id}`)
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'shared_list_items',
-            filter: `list_id=eq.${selectedList.id}`,
-          },
-          (payload) => {
-            if (payload.eventType === 'INSERT') {
-              setItems((prev: SharedListItem[]) => {
-                const newItem: SharedListItem = payload.new as SharedListItem
-                const newItems: SharedListItem[] = [...prev, newItem]
-                // Sort by checked status, then by created_at
-                return newItems.sort((a: SharedListItem, b: SharedListItem) => {
-                  if (a.checked !== b.checked) {
-                    return a.checked ? 1 : -1
-                  }
-                  return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-                })
-              })
-            } else if (payload.eventType === 'UPDATE') {
-              setItems((prev: SharedListItem[]) =>
-                prev.map((item: SharedListItem): SharedListItem =>
-                  item.id === payload.new.id ? (payload.new as SharedListItem) : item
-                ).sort((a: SharedListItem, b: SharedListItem) => {
-                  if (a.checked !== b.checked) {
-                    return a.checked ? 1 : -1
-                  }
-                  return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-                })
-              )
-            } else if (payload.eventType === 'DELETE') {
-              setItems((prev) => prev.filter((item) => item.id !== payload.old.id))
-            }
+    const listId = selectedList.id
+    loadItems(listId)
+
+    // Pas de filtre list_id côté serveur : les événements DELETE ne sont pas émis avec filter
+    const itemsChannel = supabase
+      .channel(`shared_list_items_${listId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'shared_list_items',
+        },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            const newItem = payload.new as SharedListItem
+            if (newItem.list_id !== listId) return
+            setItems((prev) => {
+              if (prev.some((item) => item.id === newItem.id)) return prev
+              return sortItems([...prev, newItem])
+            })
+          } else if (payload.eventType === 'UPDATE') {
+            const updated = payload.new as SharedListItem
+            if (updated.list_id !== listId) return
+            setItems((prev) =>
+              sortItems(prev.map((item) => (item.id === updated.id ? updated : item)))
+            )
+          } else if (payload.eventType === 'DELETE') {
+            const deletedId = (payload.old as SharedListItem | undefined)?.id
+            if (!deletedId) return
+            setItems((prev) => {
+              if (!prev.some((item) => item.id === deletedId)) return prev
+              return prev.filter((item) => item.id !== deletedId)
+            })
           }
-        )
-        .subscribe()
+        }
+      )
+      .subscribe()
 
-      return () => {
-        supabase.removeChannel(itemsChannel)
-      }
+    return () => {
+      supabase.removeChannel(itemsChannel)
     }
-  }, [selectedList, supabase])
+  }, [selectedList?.id, supabase])
 
   const loadLists = async () => {
     try {
@@ -435,7 +443,8 @@ export function SharedListsManagement({ user, familyId }: SharedListsManagementP
 
       if (error) throw error
 
-      // Realtime will update the list automatically
+      // Mise à jour locale immédiate (Realtime synchronise les autres onglets)
+      setItems((prev) => prev.filter((item) => item.id !== itemId))
     } catch (err: any) {
       setError(err.message || 'Erreur lors de la suppression')
     } finally {
