@@ -4,6 +4,8 @@ import '../../providers/lists_provider.dart';
 import '../../providers/family_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../models/shared_list.dart';
+import '../../models/product.dart';
+import '../../services/supabase_service.dart';
 
 class ListsScreen extends StatelessWidget {
   const ListsScreen({super.key});
@@ -390,15 +392,30 @@ class _ListItemsView extends StatefulWidget {
 
 class _ListItemsViewState extends State<_ListItemsView> {
   bool _showAddForm = false;
+  bool _linkProducts = true;
   final _textController = TextEditingController();
+  final _productSearchCtrl = TextEditingController();
+  List<Product> _suggestions = [];
+  final _service = SupabaseService();
   String? _editingItemId;
   final _editingController = TextEditingController();
 
   @override
   void dispose() {
     _textController.dispose();
+    _productSearchCtrl.dispose();
     _editingController.dispose();
     super.dispose();
+  }
+
+  Future<void> _searchProducts(String query) async {
+    final familyId = context.read<FamilyProvider>().family?.id;
+    if (familyId == null || query.trim().isEmpty) {
+      setState(() => _suggestions = []);
+      return;
+    }
+    final results = await _service.searchProducts(familyId, query);
+    if (mounted) setState(() => _suggestions = results);
   }
 
   Color _parseColor(String colorString) {
@@ -413,17 +430,76 @@ class _ListItemsViewState extends State<_ListItemsView> {
     final text = _textController.text.trim();
     if (text.isEmpty) return;
 
-    final lines = text.split('\n').where((line) => line.trim().isNotEmpty).toList();
+    final lines = text
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .toList();
     if (lines.isEmpty) return;
 
     final provider = context.read<ListsProvider>();
-    
+    final familyId = context.read<FamilyProvider>().family?.id;
+    if (familyId == null) return;
+
     try {
-      await provider.addItems(lines);
-      setState(() {
-        _textController.clear();
-        _showAddForm = false;
-      });
+      if (!_linkProducts) {
+        await provider.addItemsPlainText(lines);
+        setState(() => _textController.clear());
+        return;
+      }
+
+      final missing = await provider.previewMissingCatalogLines(familyId, lines);
+      if (missing.isNotEmpty && mounted) {
+        final action = await showDialog<String>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Produits introuvables'),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Ces lignes ne sont pas dans le catalogue (nom exact) :',
+                  ),
+                  const SizedBox(height: 8),
+                  ...missing.map((l) => Text('• $l')),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, 'cancel'),
+                child: const Text('Annuler'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, 'existing'),
+                child: const Text('Produits existants seulement'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, 'create'),
+                child: const Text('Créer et ajouter'),
+              ),
+            ],
+          ),
+        );
+
+        if (action == null || action == 'cancel') return;
+
+        await provider.addCatalogLinesValidated(
+          familyId: familyId,
+          lines: lines,
+          createMissing: action == 'create',
+        );
+      } else {
+        await provider.addCatalogLinesValidated(
+          familyId: familyId,
+          lines: lines,
+          createMissing: false,
+        );
+      }
+
+      if (mounted) setState(() => _textController.clear());
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -603,19 +679,68 @@ class _ListItemsViewState extends State<_ListItemsView> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Ajouter des éléments (une ligne = un élément)',
+                      'Rechercher un produit',
                       style: TextStyle(fontWeight: FontWeight.bold),
                     ),
-                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _productSearchCtrl,
+                      decoration: const InputDecoration(
+                        hintText: 'Nom, marque, UPC…',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      onChanged: _searchProducts,
+                    ),
+                    if (_suggestions
+                        .any((p) => !provider.isProductOnList(p.id)))
+                      ..._suggestions
+                          .where((p) => !provider.isProductOnList(p.id))
+                          .map(
+                        (p) => ListTile(
+                          dense: true,
+                          title: Text(formatProductLabel(
+                            name: p.name,
+                            brand: p.brand,
+                            format: p.format,
+                          )),
+                          onTap: () async {
+                            try {
+                              await provider.addProductItem(p);
+                              _productSearchCtrl.clear();
+                              setState(() => _suggestions = []);
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Erreur: $e')),
+                                );
+                              }
+                            }
+                          },
+                        ),
+                      ),
+                    const Divider(height: 24),
+                    const Text(
+                      'Ajout en masse (une ligne = un élément)',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text(
+                        'Catalogue (produits existants)',
+                        style: TextStyle(fontSize: 14),
+                      ),
+                      value: _linkProducts,
+                      onChanged: (v) => setState(() => _linkProducts = v ?? true),
+                      controlAffinity: ListTileControlAffinity.leading,
+                    ),
                     TextField(
                       controller: _textController,
                       decoration: const InputDecoration(
                         hintText: 'Lait\nPain\nOeufs',
                         border: OutlineInputBorder(),
                       ),
-                      maxLines: 6,
+                      maxLines: 4,
                       style: const TextStyle(fontFamily: 'monospace', fontSize: 14),
-                      autofocus: true,
                     ),
                     const SizedBox(height: 12),
                     Row(
@@ -634,13 +759,28 @@ class _ListItemsViewState extends State<_ListItemsView> {
                         ),
                         const SizedBox(width: 8),
                         OutlinedButton(
-                          onPressed: () {
-                            setState(() {
-                              _textController.clear();
-                              _showAddForm = false;
-                            });
-                          },
-                          child: const Text('Annuler'),
+                          onPressed: provider.isLoading
+                              ? null
+                              : () async {
+                                  final t = _textController.text.trim();
+                                  if (t.isEmpty) return;
+                                  final lines = t
+                                      .split('\n')
+                                      .map((l) => l.trim())
+                                      .where((l) => l.isNotEmpty)
+                                      .toList();
+                                  try {
+                                    await provider.addItemsPlainText(lines);
+                                    _textController.clear();
+                                  } catch (e) {
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text('Erreur: $e')),
+                                      );
+                                    }
+                                  }
+                                },
+                          child: const Text('Texte seul'),
                         ),
                       ],
                     ),
@@ -703,16 +843,38 @@ class _ListItemsViewState extends State<_ListItemsView> {
                                       )
                                     : GestureDetector(
                                         onDoubleTap: () => _startEdit(item),
-                                        child: Text(
-                                          item.text,
-                                          style: TextStyle(
-                                            decoration: item.checked
-                                                ? TextDecoration.lineThrough
-                                                : null,
-                                            color: item.checked
-                                                ? Colors.grey
-                                                : null,
-                                          ),
+                                        child: Row(
+                                          children: [
+                                            if (item.isCatalogProduct)
+                                              Container(
+                                                margin: const EdgeInsets.only(right: 6),
+                                                padding: const EdgeInsets.symmetric(
+                                                  horizontal: 4,
+                                                  vertical: 2,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.amber.shade100,
+                                                  borderRadius: BorderRadius.circular(4),
+                                                ),
+                                                child: const Text(
+                                                  'cat.',
+                                                  style: TextStyle(fontSize: 10),
+                                                ),
+                                              ),
+                                            Expanded(
+                                              child: Text(
+                                                item.text,
+                                                style: TextStyle(
+                                                  decoration: item.checked
+                                                      ? TextDecoration.lineThrough
+                                                      : null,
+                                                  color: item.checked
+                                                      ? Colors.grey
+                                                      : null,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
                                 trailing: isEditing

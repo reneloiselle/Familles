@@ -5,6 +5,7 @@ import '../models/family.dart';
 import '../models/schedule.dart';
 import '../models/task.dart';
 import '../models/shared_list.dart';
+import '../models/product.dart';
 import '../models/invitation.dart';
 
 /// Service Supabase - Point d'accès unique à Supabase
@@ -585,6 +586,304 @@ class SupabaseService {
 
   Future<void> deleteSharedListItem(String itemId) async {
     await client.from('shared_list_items').delete().eq('id', itemId);
+  }
+
+  Future<List<SharedListItem>> addSharedListItemsWithProducts({
+    required String listId,
+    required List<String> lines,
+    required String userId,
+    bool linkProducts = true,
+    bool createIfMissing = false,
+  }) async {
+    final response = await client.rpc(
+      'add_shared_list_items_with_products',
+      params: {
+        'p_list_id': listId,
+        'p_user_id': userId,
+        'p_lines': lines,
+        'p_link_products': linkProducts,
+        'p_create_if_missing': createIfMissing,
+      },
+    );
+
+    if (response == null) return [];
+
+    return (response as List)
+        .map((json) => SharedListItem.fromJson(json as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<String?> findProduct({
+    required String familyId,
+    required String name,
+    String? upc,
+  }) async {
+    try {
+      final response = await client.rpc(
+        'find_product',
+        params: {
+          'p_family_id': familyId,
+          'p_name': name,
+          'p_upc': upc,
+        },
+      );
+      return response as String?;
+    } catch (_) {
+      final normalized = name.trim().toLowerCase();
+      final rows = await client
+          .from('products')
+          .select('id, name')
+          .eq('family_id', familyId);
+      final matches = (rows as List).where((json) {
+        final n = (json['name'] as String).trim().toLowerCase();
+        return n == normalized;
+      }).toList();
+      if (matches.length == 1) {
+        return matches.first['id'] as String;
+      }
+      return null;
+    }
+  }
+
+  Future<String> resolveOrCreateProduct({
+    required String familyId,
+    required String userId,
+    required String name,
+    String? brand,
+    String? format,
+    double? price,
+    String? upc,
+  }) async {
+    final response = await client.rpc(
+      'resolve_or_create_product',
+      params: {
+        'p_family_id': familyId,
+        'p_user_id': userId,
+        'p_name': name,
+        'p_brand': brand,
+        'p_format': format,
+        'p_price': price,
+        'p_upc': upc,
+      },
+    );
+    return response as String;
+  }
+
+  Future<SharedListItem> addProductToSharedList({
+    required String listId,
+    required Product product,
+    required String createdBy,
+  }) async {
+    final text = formatProductLabel(
+      name: product.name,
+      brand: product.brand,
+      format: product.format,
+    );
+    final response = await client
+        .from('shared_list_items')
+        .insert({
+          'list_id': listId,
+          'text': text,
+          'product_id': product.id,
+          'created_by': createdBy,
+        })
+        .select()
+        .single();
+
+    return SharedListItem.fromJson(response);
+  }
+
+  // Products catalog
+  Future<List<Product>> getProducts(String familyId) async {
+    final response = await client
+        .from('products')
+        .select('*')
+        .eq('family_id', familyId)
+        .order('name');
+
+    if (response.isEmpty) return [];
+
+    return (response as List)
+        .map((json) => Product.fromJson(json as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<List<Product>> searchProducts(String familyId, String query) async {
+    final q = query.trim();
+    if (q.isEmpty) return [];
+
+    final response = await client
+        .from('products')
+        .select('*')
+        .eq('family_id', familyId)
+        .or('name.ilike.%$q%,brand.ilike.%$q%,upc.ilike.%$q%')
+        .order('name')
+        .limit(12);
+
+    if (response.isEmpty) return [];
+
+    return (response as List)
+        .map((json) => Product.fromJson(json as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<Product> createProduct({
+    required String familyId,
+    required String name,
+    String? brand,
+    String? format,
+    double? price,
+    String? upc,
+    required String createdBy,
+  }) async {
+    final response = await client
+        .from('products')
+        .insert({
+          'family_id': familyId,
+          'name': name.trim(),
+          'brand': brand?.trim().isEmpty == true ? null : brand?.trim(),
+          'format': format?.trim().isEmpty == true ? null : format?.trim(),
+          'price': price,
+          'upc': normalizeUpc(upc),
+          'created_by': createdBy,
+        })
+        .select()
+        .single();
+
+    return Product.fromJson(response);
+  }
+
+  Future<void> updateProduct(
+    String productId, {
+    required String name,
+    String? brand,
+    String? format,
+    double? price,
+    String? upc,
+  }) async {
+    await client.from('products').update({
+      'name': name.trim(),
+      'brand': brand?.trim().isEmpty == true ? null : brand?.trim(),
+      'format': format?.trim().isEmpty == true ? null : format?.trim(),
+      'price': price,
+      'upc': normalizeUpc(upc),
+    }).eq('id', productId);
+  }
+
+  Future<void> deleteProduct(String productId) async {
+    await client.from('products').delete().eq('id', productId);
+  }
+
+  Future<Product?> getProduct(String productId) async {
+    final response = await client
+        .from('products')
+        .select('*')
+        .eq('id', productId)
+        .maybeSingle();
+
+    if (response == null) return null;
+    return Product.fromJson(response);
+  }
+
+  Future<List<ProductStorePlacement>> getProductPlacements(String productId) async {
+    final response = await client
+        .from('product_store_placements')
+        .select('*, stores(name)')
+        .eq('product_id', productId);
+
+    if (response.isEmpty) return [];
+
+    return (response as List)
+        .map((json) => ProductStorePlacement.fromJson(json as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> addProductPlacement({
+    required String productId,
+    required String storeId,
+    String? aisle,
+    String? comment,
+    required String createdBy,
+  }) async {
+    await client.from('product_store_placements').insert({
+      'product_id': productId,
+      'store_id': storeId,
+      'aisle': aisle?.trim().isEmpty == true ? null : aisle?.trim(),
+      'comment': comment?.trim().isEmpty == true ? null : comment?.trim(),
+      'created_by': createdBy,
+    });
+  }
+
+  Future<void> deleteProductPlacement(String placementId) async {
+    await client.from('product_store_placements').delete().eq('id', placementId);
+  }
+
+  // Stores
+  Future<List<Store>> getStores(String familyId) async {
+    final response = await client
+        .from('stores')
+        .select('*')
+        .eq('family_id', familyId)
+        .order('name');
+
+    if (response.isEmpty) return [];
+
+    return (response as List)
+        .map((json) => Store.fromJson(json as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<Store?> getStore(String storeId) async {
+    final response = await client
+        .from('stores')
+        .select('*')
+        .eq('id', storeId)
+        .maybeSingle();
+
+    if (response == null) return null;
+    return Store.fromJson(response);
+  }
+
+  Future<Store> createStore({
+    required String familyId,
+    required String name,
+    String? notes,
+    required String createdBy,
+  }) async {
+    final response = await client
+        .from('stores')
+        .insert({
+          'family_id': familyId,
+          'name': name.trim(),
+          'notes': notes?.trim().isEmpty == true ? null : notes?.trim(),
+          'created_by': createdBy,
+        })
+        .select()
+        .single();
+
+    return Store.fromJson(response);
+  }
+
+  Future<void> updateStore(String storeId, {String? name, String? notes}) async {
+    final updates = <String, dynamic>{};
+    if (name != null) updates['name'] = name.trim();
+    if (notes != null) updates['notes'] = notes.trim().isEmpty ? null : notes.trim();
+    await client.from('stores').update(updates).eq('id', storeId);
+  }
+
+  Future<void> deleteStore(String storeId) async {
+    await client.from('stores').delete().eq('id', storeId);
+  }
+
+  Future<List<Map<String, dynamic>>> getStorePlacementsWithProducts(
+    String storeId,
+  ) async {
+    final response = await client
+        .from('product_store_placements')
+        .select('id, aisle, comment, products(id, name, brand, format)')
+        .eq('store_id', storeId);
+
+    return List<Map<String, dynamic>>.from(response as List);
   }
 
   // Chat conversations methods

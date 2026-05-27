@@ -1,7 +1,7 @@
 import { createServerClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { Calendar, CalendarDays, Users, CheckSquare, Plus, List } from 'lucide-react'
+import { Calendar, CalendarDays, Users, CheckSquare, Plus, List, Package, Store } from 'lucide-react'
 import { MemberAvatar } from '@/components/MemberAvatar'
 
 async function getUserFamily(supabase: any, userId: string) {
@@ -100,7 +100,7 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3 sm:gap-4 mb-6">
         <Link href="/dashboard/family" className="card group">
           <div className="flex flex-col sm:flex-row items-center sm:items-center gap-3">
             <div className="bg-gradient-to-br from-primary-100 to-primary-200 p-3 rounded-xl group-hover:scale-110 transition-transform duration-200">
@@ -156,7 +156,31 @@ export default async function DashboardPage() {
             </div>
             <div className="flex-1 min-w-0">
               <h3 className="font-semibold text-sm sm:text-base truncate">Listes</h3>
-              <p className="text-xs sm:text-sm text-gray-600 hidden sm:block">Listes partagées</p>
+              <p className="text-xs sm:text-sm text-gray-600 hidden sm:block">Courses hybrides</p>
+            </div>
+          </div>
+        </Link>
+
+        <Link href="/dashboard/products" className="card group">
+          <div className="flex flex-col sm:flex-row items-center sm:items-center gap-3">
+            <div className="bg-gradient-to-br from-amber-100 to-amber-200 p-3 rounded-xl group-hover:scale-110 transition-transform duration-200">
+              <Package className="w-5 h-5 sm:w-6 sm:h-6 text-amber-700" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-semibold text-sm sm:text-base truncate">Produits</h3>
+              <p className="text-xs sm:text-sm text-gray-600 hidden sm:block">Catalogue famille</p>
+            </div>
+          </div>
+        </Link>
+
+        <Link href="/dashboard/stores" className="card group">
+          <div className="flex flex-col sm:flex-row items-center sm:items-center gap-3">
+            <div className="bg-gradient-to-br from-orange-100 to-orange-200 p-3 rounded-xl group-hover:scale-110 transition-transform duration-200">
+              <Store className="w-5 h-5 sm:w-6 sm:h-6 text-orange-700" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-semibold text-sm sm:text-base truncate">Magasins</h3>
+              <p className="text-xs sm:text-sm text-gray-600 hidden sm:block">Emplacements</p>
             </div>
           </div>
         </Link>

@@ -8,7 +8,9 @@ import {
   Users, 
   Calendar, 
   CheckSquare, 
-  List, 
+  List,
+  Package,
+  Store,
   LogOut,
   X,
   User,
@@ -27,6 +29,8 @@ const navigationItems = [
   { href: '/dashboard/schedule', icon: Calendar, label: 'Horaires' },
   { href: '/dashboard/tasks', icon: CheckSquare, label: 'Tâches' },
   { href: '/dashboard/lists', icon: List, label: 'Listes' },
+  { href: '/dashboard/products', icon: Package, label: 'Produits' },
+  { href: '/dashboard/stores', icon: Store, label: 'Magasins' },
   { href: '/dashboard/api-keys', icon: Key, label: 'Clés API' },
 ]
 

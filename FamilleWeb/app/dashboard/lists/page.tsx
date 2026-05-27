@@ -34,7 +34,7 @@ export default async function ListsPage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-2">Listes partagées</h1>
         <p className="text-gray-600">
-          Créez et partagez des listes avec votre famille (liste de courses, tâches, etc.)
+          Listes de courses et notes — texte libre ou produits du catalogue (création automatique).
         </p>
       </div>
 

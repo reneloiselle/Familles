@@ -55,6 +55,7 @@ class SharedListItem {
   final bool checked;
   final String? quantity;
   final String? notes;
+  final String? productId;
   final String createdBy;
   final DateTime? checkedAt;
   final String? checkedBy;
@@ -67,11 +68,14 @@ class SharedListItem {
     required this.checked,
     this.quantity,
     this.notes,
+    this.productId,
     required this.createdBy,
     this.checkedAt,
     this.checkedBy,
     required this.createdAt,
   });
+
+  bool get isCatalogProduct => productId != null;
 
   factory SharedListItem.fromJson(Map<String, dynamic> json) {
     return SharedListItem(
@@ -81,6 +85,7 @@ class SharedListItem {
       checked: json['checked'] as bool,
       quantity: json['quantity'] as String?,
       notes: json['notes'] as String?,
+      productId: json['product_id'] as String?,
       createdBy: json['created_by'] as String,
       checkedAt: json['checked_at'] != null
           ? DateTime.parse(json['checked_at'] as String)
@@ -98,6 +103,7 @@ class SharedListItem {
       'checked': checked,
       'quantity': quantity,
       'notes': notes,
+      'product_id': productId,
       'created_by': createdBy,
       'checked_at': checkedAt?.toIso8601String(),
       'checked_by': checkedBy,

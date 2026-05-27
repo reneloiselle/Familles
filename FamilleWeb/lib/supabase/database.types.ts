@@ -274,6 +274,7 @@ export interface Database {
           checked: boolean
           quantity: string | null
           notes: string | null
+          product_id: string | null
           created_by: string
           created_at: string
           updated_at: string
@@ -287,6 +288,7 @@ export interface Database {
           checked?: boolean
           quantity?: string | null
           notes?: string | null
+          product_id?: string | null
           created_by: string
           created_at?: string
           updated_at?: string
@@ -300,6 +302,7 @@ export interface Database {
           checked?: boolean
           quantity?: string | null
           notes?: string | null
+          product_id?: string | null
           created_by?: string
           created_at?: string
           updated_at?: string
@@ -312,6 +315,146 @@ export interface Database {
             columns: ['list_id']
             isOneToOne: false
             referencedRelation: 'shared_lists'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'shared_list_items_product_id_fkey'
+            columns: ['product_id']
+            isOneToOne: false
+            referencedRelation: 'products'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      products: {
+        Row: {
+          id: string
+          family_id: string
+          name: string
+          brand: string | null
+          format: string | null
+          price: number | null
+          upc: string | null
+          created_by: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          family_id: string
+          name: string
+          brand?: string | null
+          format?: string | null
+          price?: number | null
+          upc?: string | null
+          created_by: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          family_id?: string
+          name?: string
+          brand?: string | null
+          format?: string | null
+          price?: number | null
+          upc?: string | null
+          created_by?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'products_family_id_fkey'
+            columns: ['family_id']
+            isOneToOne: false
+            referencedRelation: 'families'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      stores: {
+        Row: {
+          id: string
+          family_id: string
+          name: string
+          notes: string | null
+          created_by: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          family_id: string
+          name: string
+          notes?: string | null
+          created_by: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          family_id?: string
+          name?: string
+          notes?: string | null
+          created_by?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'stores_family_id_fkey'
+            columns: ['family_id']
+            isOneToOne: false
+            referencedRelation: 'families'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      product_store_placements: {
+        Row: {
+          id: string
+          product_id: string
+          store_id: string
+          aisle: string | null
+          comment: string | null
+          created_by: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          product_id: string
+          store_id: string
+          aisle?: string | null
+          comment?: string | null
+          created_by: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          product_id?: string
+          store_id?: string
+          aisle?: string | null
+          comment?: string | null
+          created_by?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'product_store_placements_product_id_fkey'
+            columns: ['product_id']
+            isOneToOne: false
+            referencedRelation: 'products'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'product_store_placements_store_id_fkey'
+            columns: ['store_id']
+            isOneToOne: false
+            referencedRelation: 'stores'
             referencedColumns: ['id']
           },
         ]
@@ -420,6 +563,64 @@ export interface Database {
           p_user_id: string
         }
         Returns: boolean
+      }
+      can_user_access_product: {
+        Args: {
+          p_product_id: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
+      can_user_access_store: {
+        Args: {
+          p_store_id: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
+      resolve_or_create_product: {
+        Args: {
+          p_family_id: string
+          p_user_id: string
+          p_name: string
+          p_brand?: string | null
+          p_format?: string | null
+          p_price?: number | null
+          p_upc?: string | null
+        }
+        Returns: string
+      }
+      add_shared_list_items_with_products: {
+        Args: {
+          p_list_id: string
+          p_user_id: string
+          p_lines: string[]
+          p_link_products?: boolean
+          p_create_if_missing?: boolean
+        }
+        Returns: Database['public']['Tables']['shared_list_items']['Row'][]
+      }
+      find_product: {
+        Args: {
+          p_family_id: string
+          p_name: string
+          p_upc?: string | null
+        }
+        Returns: string | null
+      }
+      format_product_label: {
+        Args: {
+          p_name: string
+          p_brand?: string | null
+          p_format?: string | null
+        }
+        Returns: string
+      }
+      normalize_product_upc: {
+        Args: {
+          p_upc: string
+        }
+        Returns: string
       }
     }
     Enums: {

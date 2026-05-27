@@ -28,6 +28,19 @@ Les scripts SQL se trouvent dans [`supabase/migrations/`](supabase/migrations/).
 | `020_replica_identity_shared_lists.sql` | `REPLICA IDENTITY FULL` (Realtime DELETE) |
 | `021_accept_pending_invitations.sql` | Acceptation invitations en attente |
 | `022_add_member_color.sql` | Colonne `color`, couleurs par défaut, auto-édition profil |
+| `023_add_products_and_stores.sql` | Catalogue `products`, `stores`, `product_store_placements` + RLS |
+| `024_extend_shared_list_items_products.sql` | `product_id` sur items, RPC résolution/création produit |
+| `025_enable_realtime_products.sql` | Realtime catalogue + `REPLICA IDENTITY FULL` |
+| `026_find_product_validate_list.sql` | `find_product` (sans création) + validation à l’ajout en liste |
+
+**Fichier tout-en-un (SQL Editor)** : [`supabase/migrations/APPLY_023_025_products_catalog.sql`](supabase/migrations/APPLY_023_025_products_catalog.sql) — collez son contenu en une fois dans le SQL Editor du projet lié à votre `.env` (`NEXT_PUBLIC_SUPABASE_URL`).
+
+**En ligne de commande** (mot de passe DB requis) :
+
+```bash
+cd FamilleWeb
+SUPABASE_DB_PASSWORD='votre_mot_de_passe' node scripts/apply-migrations.mjs 023 024 025
+```
 
 ## Migrations critiques pour l’UI actuelle
 
@@ -35,6 +48,7 @@ Sans ces migrations, certaines pages échouent silencieusement ou affichent des 
 
 - **`009`** — page Listes (`/dashboard/lists`)
 - **`013` + `022`** — avatars et couleurs membres (page Famille, tâches, horaires, planning, navbar)
+- **`023`–`026`** — catalogue produits, magasins, listes hybrides (`/dashboard/products`, `/dashboard/stores`)
 
 ## Après une migration
 
@@ -53,7 +67,7 @@ Sans ces migrations, certaines pages échouent silencieusement ou affichent des 
 
 ## Nouvelle migration
 
-1. Créer `supabase/migrations/023_description.sql` (numéro suivant).
+1. Créer `supabase/migrations/027_description.sql` (numéro suivant).
 2. Documenter le fichier dans ce document.
 3. Mettre à jour `database.types.ts`.
 4. Tester RLS en tant que parent et enfant.

@@ -7,6 +7,8 @@ import '../schedule/schedule_screen.dart';
 import '../tasks/tasks_screen.dart';
 import '../lists/lists_screen.dart';
 import '../chat/chat_screen.dart';
+import '../products/products_screen.dart';
+import '../stores/stores_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -145,6 +147,36 @@ class DashboardHomeScreen extends StatelessWidget {
               style: TextStyle(color: Colors.grey),
             ),
             const SizedBox(height: 48),
+            Card(
+              elevation: 2,
+              child: ListTile(
+                leading: const Icon(Icons.inventory_2, color: Color(0xFFd97706)),
+                title: const Text('Catalogue produits'),
+                subtitle: const Text('CRUD produits et emplacements'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const ProductsScreen()),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
+            Card(
+              elevation: 2,
+              child: ListTile(
+                leading: const Icon(Icons.store, color: Color(0xFFea580c)),
+                title: const Text('Magasins'),
+                subtitle: const Text('Mode courses par rangée'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const StoresScreen()),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
             Card(
               elevation: 2,
               child: InkWell(

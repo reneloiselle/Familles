@@ -7,7 +7,7 @@ import type { User as SupabaseUser } from '@supabase/supabase-js'
 import { useAuth } from '@/app/providers'
 import { createClient } from '@/lib/supabase/client'
 import { isMissingColumnError } from '@/lib/supabase/columnErrors'
-import { Calendar, CalendarDays, Users, CheckSquare, LogOut, Home, List, Menu, X, User } from 'lucide-react'
+import { Calendar, CalendarDays, Users, CheckSquare, LogOut, Home, List, Menu, X, User, Package, Store } from 'lucide-react'
 
 function getUserDisplayName(user: SupabaseUser, memberName?: string | null) {
   if (memberName?.trim()) return memberName.trim()
@@ -154,6 +154,8 @@ export function Navbar() {
     { href: '/dashboard/schedule', icon: Calendar, label: 'Horaires' },
     { href: '/dashboard/tasks', icon: CheckSquare, label: 'Tâches' },
     { href: '/dashboard/lists', icon: List, label: 'Listes' },
+    { href: '/dashboard/products', icon: Package, label: 'Produits' },
+    { href: '/dashboard/stores', icon: Store, label: 'Magasins' },
   ]
 
   const allNavItems = [

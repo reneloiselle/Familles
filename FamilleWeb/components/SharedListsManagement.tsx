@@ -3,8 +3,20 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2, Edit2, CheckCircle2, Circle, List as ListIcon, X } from 'lucide-react'
+import { Plus, Trash2, Edit2, CheckCircle2, Circle, List as ListIcon, X, Package } from 'lucide-react'
 import { User } from '@supabase/supabase-js'
+import {
+  formatProductLabel,
+  normalizeUpc,
+  parsePriceInput,
+} from '@/lib/products'
+import {
+  filterNewTextLines,
+  formatListItemText,
+  isProductAlreadyOnList,
+  matchLinesToCatalog,
+  type CatalogProductRow,
+} from '@/lib/catalogList'
 
 interface SharedList {
   id: string
@@ -24,11 +36,27 @@ interface SharedListItem {
   checked: boolean
   quantity: string | null
   notes: string | null
+  product_id: string | null
   created_by: string
   created_at: string
   updated_at: string
   checked_at: string | null
   checked_by: string | null
+}
+
+interface CatalogProduct {
+  id: string
+  name: string
+  brand: string | null
+  format: string | null
+  price: number | null
+  upc: string | null
+}
+
+interface ProductPlacement {
+  aisle: string | null
+  comment: string | null
+  stores: { name: string } | null
 }
 
 interface SharedListsManagementProps {
@@ -55,6 +83,22 @@ export function SharedListsManagement({ user, familyId }: SharedListsManagementP
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
   const [editingItemText, setEditingItemText] = useState('')
   const [bulkAddText, setBulkAddText] = useState('')
+  const [bulkLinkProducts, setBulkLinkProducts] = useState(true)
+  const [productSearch, setProductSearch] = useState('')
+  const [productSuggestions, setProductSuggestions] = useState<CatalogProduct[]>([])
+  const [showCreateProduct, setShowCreateProduct] = useState(false)
+  const [createProductForm, setCreateProductForm] = useState({
+    name: '',
+    brand: '',
+    format: '',
+    price: '',
+    upc: '',
+  })
+  const [detailProduct, setDetailProduct] = useState<CatalogProduct | null>(null)
+  const [detailPlacements, setDetailPlacements] = useState<ProductPlacement[]>([])
+  const [missingCatalogLines, setMissingCatalogLines] = useState<string[]>([])
+  const [pendingCatalogProducts, setPendingCatalogProducts] = useState<CatalogProductRow[]>([])
+  const [showMissingCatalogDialog, setShowMissingCatalogDialog] = useState(false)
   const [loading, setLoading] = useState(false)
   const [listsLoading, setListsLoading] = useState(true)
   const [error, setError] = useState('')
@@ -331,51 +375,268 @@ export function SharedListsManagement({ user, familyId }: SharedListsManagementP
     }
   }
 
-  const addItemsFromText = async (text: string) => {
+  const splitLines = (text: string) =>
+    text
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+
+  const insertCatalogProducts = async (products: CatalogProductRow[]) => {
+    if (!selectedList || products.length === 0) return
+
+    const toInsert = products.filter(
+      (p) => !isProductAlreadyOnList(items, p.id)
+    )
+
+    if (toInsert.length === 0) return
+
+    const rows = toInsert.map((p) => ({
+      list_id: selectedList.id,
+      text: formatListItemText(p),
+      product_id: p.id,
+      created_by: user.id,
+    }))
+
+    const { error } = await supabase.from('shared_list_items').insert(rows)
+    if (error) throw error
+  }
+
+  const addItemsFromText = async (text: string, linkProducts = bulkLinkProducts) => {
     if (!selectedList || !text.trim()) return
 
     setError('')
     setLoading(true)
 
     try {
-      // Split by lines and filter empty lines
-      const lines = text
-        .split('\n')
-        .map(line => line.trim())
-        .filter(line => line.length > 0)
+      const lines = splitLines(text)
 
       if (lines.length === 0) {
         setBulkAddText('')
-        setShowItemForm(false)
         setLoading(false)
         return
       }
 
-      // Create items from each line
-      const itemsToAdd = lines.map(text => ({
-        list_id: selectedList.id,
-        text,
-        created_by: user.id,
-      }))
+      if (!linkProducts) {
+        const newLines = filterNewTextLines(items, lines)
+        if (newLines.length > 0) {
+          const itemsToAdd = newLines.map((line) => ({
+            list_id: selectedList.id,
+            text: line,
+            created_by: user.id,
+          }))
+          const { error: insertErr } = await supabase
+            .from('shared_list_items')
+            .insert(itemsToAdd)
+          if (insertErr) throw insertErr
+        }
+        setBulkAddText('')
+        return
+      }
 
-      const { error } = await supabase
-        .from('shared_list_items')
-        .insert(itemsToAdd)
+      const { missing, matched } = await matchLinesToCatalog(
+        supabase,
+        familyId,
+        lines
+      )
 
-      if (error) throw error
+      const foundProducts = matched
+        .filter((m): m is { line: string; product: CatalogProductRow } => m.product !== null)
+        .map((m) => m.product)
+        .filter((p) => !isProductAlreadyOnList(items, p.id))
 
-      // Realtime will update the list automatically
+      if (missing.length > 0) {
+        setMissingCatalogLines(missing)
+        setPendingCatalogProducts(foundProducts)
+        setShowMissingCatalogDialog(true)
+        setLoading(false)
+        return
+      }
+
+      await insertCatalogProducts(foundProducts)
       setBulkAddText('')
-      // Keep the form open for quick additions
-      // Focus back to textarea
       setTimeout(() => {
-        document.querySelector('textarea')?.focus()
+        const el = document.querySelector('textarea[data-bulk-add]') as HTMLTextAreaElement | null
+        el?.focus()
       }, 100)
-    } catch (err: any) {
-      setError(err.message || 'Erreur lors de l\'ajout des éléments')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erreur lors de l\'ajout des éléments')
     } finally {
       setLoading(false)
     }
+  }
+
+  const confirmAddFoundCatalogOnly = async () => {
+    setShowMissingCatalogDialog(false)
+    setLoading(true)
+    try {
+      await insertCatalogProducts(pendingCatalogProducts)
+      setBulkAddText('')
+      setMissingCatalogLines([])
+      setPendingCatalogProducts([])
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erreur lors de l\'ajout')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const confirmCreateMissingAndAddAll = async () => {
+    if (!selectedList) return
+    setShowMissingCatalogDialog(false)
+    setLoading(true)
+    setError('')
+    try {
+      await insertCatalogProducts(pendingCatalogProducts)
+
+      for (const line of missingCatalogLines) {
+        const { data: productId, error: rpcErr } = await supabase.rpc(
+          'resolve_or_create_product',
+          {
+            p_family_id: familyId,
+            p_user_id: user.id,
+            p_name: line,
+            p_brand: null,
+            p_format: null,
+            p_price: null,
+            p_upc: null,
+          }
+        )
+        if (rpcErr) throw rpcErr
+
+        const { data: product } = await supabase
+          .from('products')
+          .select('id, name, brand, format, price, upc')
+          .eq('id', productId)
+          .single()
+
+        if (product && !isProductAlreadyOnList(items, product.id)) {
+          await supabase.from('shared_list_items').insert({
+            list_id: selectedList.id,
+            text: formatListItemText(product as CatalogProductRow),
+            product_id: product.id,
+            created_by: user.id,
+          })
+        }
+      }
+
+      setBulkAddText('')
+      setMissingCatalogLines([])
+      setPendingCatalogProducts([])
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erreur création produits')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const searchProducts = useCallback(
+    async (query: string) => {
+      const q = query.trim()
+      if (q.length < 1) {
+        setProductSuggestions([])
+        return
+      }
+      const { data } = await supabase
+        .from('products')
+        .select('id, name, brand, format, price, upc')
+        .eq('family_id', familyId)
+        .or(`name.ilike.%${q}%,brand.ilike.%${q}%,upc.ilike.%${q}%`)
+        .order('name')
+        .limit(8)
+      setProductSuggestions((data as CatalogProduct[]) || [])
+    },
+    [familyId, supabase]
+  )
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      void searchProducts(productSearch)
+    }, 200)
+    return () => clearTimeout(t)
+  }, [productSearch, searchProducts])
+
+  const addProductToList = async (product: CatalogProduct) => {
+    if (!selectedList) return
+
+    if (isProductAlreadyOnList(items, product.id)) return
+
+    setLoading(true)
+    setError('')
+    try {
+      const display = formatProductLabel(product)
+      const { error } = await supabase.from('shared_list_items').insert({
+        list_id: selectedList.id,
+        text: display,
+        product_id: product.id,
+        created_by: user.id,
+      })
+      if (error) throw error
+      setProductSearch('')
+      setProductSuggestions([])
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erreur ajout produit')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const createProductAndAdd = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!selectedList || !createProductForm.name.trim()) return
+
+    setLoading(true)
+    setError('')
+    try {
+      const { data: productId, error: rpcErr } = await supabase.rpc(
+        'resolve_or_create_product',
+        {
+          p_family_id: familyId,
+          p_user_id: user.id,
+          p_name: createProductForm.name.trim(),
+          p_brand: createProductForm.brand.trim() || null,
+          p_format: createProductForm.format.trim() || null,
+          p_price: parsePriceInput(createProductForm.price),
+          p_upc: normalizeUpc(createProductForm.upc),
+        }
+      )
+
+      if (rpcErr) throw rpcErr
+
+      const { data: product } = await supabase
+        .from('products')
+        .select('id, name, brand, format, price, upc')
+        .eq('id', productId)
+        .single()
+
+      if (!product) throw new Error('Produit introuvable après création')
+
+      await addProductToList(product as CatalogProduct)
+      setShowCreateProduct(false)
+      setCreateProductForm({ name: '', brand: '', format: '', price: '', upc: '' })
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erreur création produit')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const openProductDetail = async (productId: string) => {
+    const { data: product } = await supabase
+      .from('products')
+      .select('id, name, brand, format, price, upc')
+      .eq('id', productId)
+      .single()
+
+    if (!product) return
+
+    setDetailProduct(product as CatalogProduct)
+
+    const { data: placements } = await supabase
+      .from('product_store_placements')
+      .select('aisle, comment, stores(name)')
+      .eq('product_id', productId)
+
+    setDetailPlacements((placements as ProductPlacement[]) || [])
   }
 
   const startEditItem = (item: SharedListItem) => {
@@ -689,52 +950,152 @@ export function SharedListsManagement({ user, familyId }: SharedListsManagementP
               </div>
 
               {showItemForm && (
-                <div className="mb-4 p-4 bg-gray-50 rounded-lg">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Ajouter des éléments (une ligne = un élément)
-                  </label>
-                  <textarea
-                    value={bulkAddText}
-                    onChange={(e) => setBulkAddText(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && e.ctrlKey) {
-                        e.preventDefault()
-                        addItemsFromText(bulkAddText)
-                      }
-                    }}
-                    placeholder="Tapez vos éléments ici, un par ligne...
+                <div className="mb-4 p-4 bg-gray-50 rounded-lg space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Rechercher un produit du catalogue
+                    </label>
+                    <input
+                      type="search"
+                      className="input w-full"
+                      placeholder="Nom, marque ou UPC…"
+                      value={productSearch}
+                      onChange={(e) => setProductSearch(e.target.value)}
+                    />
+                    {productSuggestions.filter(
+                      (p) => !isProductAlreadyOnList(items, p.id)
+                    ).length > 0 && (
+                      <ul className="mt-1 border rounded-lg bg-white divide-y max-h-40 overflow-y-auto">
+                        {productSuggestions
+                          .filter((p) => !isProductAlreadyOnList(items, p.id))
+                          .map((p) => (
+                          <li key={p.id}>
+                            <button
+                              type="button"
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-primary-50"
+                              onClick={() => void addProductToList(p)}
+                            >
+                              {formatProductLabel(p)}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <button
+                      type="button"
+                      className="text-sm text-primary-600 mt-2"
+                      onClick={() => {
+                        setCreateProductForm({
+                          name: productSearch,
+                          brand: '',
+                          format: '',
+                          price: '',
+                          upc: '',
+                        })
+                        setShowCreateProduct(true)
+                      }}
+                    >
+                      + Créer un produit et l&apos;ajouter
+                    </button>
+                  </div>
 
-Exemple:
-Lait
+                  <div className="border-t pt-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Ajout en masse (une ligne = un élément)
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-gray-600 mb-2">
+                      <input
+                        type="checkbox"
+                        checked={bulkLinkProducts}
+                        onChange={(e) => setBulkLinkProducts(e.target.checked)}
+                      />
+                      Lier au catalogue (uniquement les produits déjà enregistrés)
+                    </label>
+                    <textarea
+                      data-bulk-add
+                      value={bulkAddText}
+                      onChange={(e) => setBulkAddText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && e.ctrlKey) {
+                          e.preventDefault()
+                          void addItemsFromText(bulkAddText)
+                        }
+                      }}
+                      placeholder="Lait
 Pain
 Oeufs
 
-Appuyez sur Ctrl+Entrée pour ajouter"
-                    className="input w-full min-h-[120px] resize-y font-mono text-sm"
-                    autoFocus
-                  />
-                  <div className="flex gap-2 mt-3">
-                    <button
-                      onClick={() => addItemsFromText(bulkAddText)}
-                      disabled={loading || !bulkAddText.trim()}
-                      className="btn btn-primary flex-1"
-                    >
-                      {loading ? 'Ajout...' : 'Ajouter'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowItemForm(false)
-                        setBulkAddText('')
-                      }}
-                      className="btn btn-secondary"
-                    >
-                      Annuler
-                    </button>
+Ctrl+Entrée pour ajouter"
+                      className="input w-full min-h-[100px] resize-y font-mono text-sm"
+                    />
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      <button
+                        type="button"
+                        onClick={() => void addItemsFromText(bulkAddText, true)}
+                        disabled={loading || !bulkAddText.trim()}
+                        className="btn btn-primary"
+                      >
+                        {loading ? 'Vérification…' : 'Ajouter (catalogue)'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void addItemsFromText(bulkAddText, false)}
+                        disabled={loading || !bulkAddText.trim()}
+                        className="btn btn-secondary"
+                      >
+                        Texte libre seulement
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">Ctrl+Entrée = ajout catalogue</p>
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">
-                    💡 Astuce: Utilisez Ctrl+Entrée pour ajouter rapidement
-                  </p>
+                </div>
+              )}
+
+              {showCreateProduct && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+                  <form
+                    onSubmit={createProductAndAdd}
+                    className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 space-y-3"
+                  >
+                    <h3 className="font-semibold text-lg">Nouveau produit</h3>
+                    <input
+                      className="input w-full"
+                      placeholder="Nom *"
+                      value={createProductForm.name}
+                      onChange={(e) =>
+                        setCreateProductForm({ ...createProductForm, name: e.target.value })
+                      }
+                      required
+                    />
+                    <input
+                      className="input w-full"
+                      placeholder="Marque"
+                      value={createProductForm.brand}
+                      onChange={(e) =>
+                        setCreateProductForm({ ...createProductForm, brand: e.target.value })
+                      }
+                    />
+                    <input
+                      className="input w-full"
+                      placeholder="Format"
+                      value={createProductForm.format}
+                      onChange={(e) =>
+                        setCreateProductForm({ ...createProductForm, format: e.target.value })
+                      }
+                    />
+                    <div className="flex gap-2">
+                      <button type="submit" disabled={loading} className="btn btn-primary flex-1">
+                        Créer et ajouter
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => setShowCreateProduct(false)}
+                      >
+                        Annuler
+                      </button>
+                    </div>
+                  </form>
                 </div>
               )}
 
@@ -790,14 +1151,31 @@ Appuyez sur Ctrl+Entrée pour ajouter"
                         ) : (
                           <label
                             onDoubleClick={() => !item.checked && startEditItem(item)}
-                            className={`block cursor-pointer select-none text-sm leading-tight ${
+                            onClick={() => {
+                              if (item.product_id) void openProductDetail(item.product_id)
+                            }}
+                            className={`block select-none text-sm leading-tight ${
                               item.checked
                                 ? 'line-through text-gray-500'
                                 : 'text-gray-900'
-                            }`}
-                            title={item.checked ? '' : 'Double-cliquez pour modifier'}
+                            } ${item.product_id ? 'cursor-pointer' : 'cursor-pointer'}`}
+                            title={
+                              item.product_id
+                                ? 'Cliquer pour le détail produit'
+                                : item.checked
+                                  ? ''
+                                  : 'Double-cliquez pour modifier'
+                            }
                           >
-                            {item.text}
+                            <span className="inline-flex items-center gap-1.5 flex-wrap">
+                              {item.product_id && (
+                                <span className="inline-flex items-center gap-0.5 text-[10px] uppercase tracking-wide bg-amber-100 text-amber-800 px-1 rounded">
+                                  <Package className="w-3 h-3" />
+                                  catalogue
+                                </span>
+                              )}
+                              {item.text}
+                            </span>
                           </label>
                         )}
                       </div>
@@ -826,6 +1204,96 @@ Appuyez sur Ctrl+Entrée pour ajouter"
           )}
         </div>
       </div>
+
+      {showMissingCatalogDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <h3 className="font-semibold text-lg mb-2">Produits introuvables</h3>
+            <p className="text-sm text-gray-600 mb-3">
+              Ces lignes ne correspondent à aucun produit du catalogue (nom exact ou UPC) :
+            </p>
+            <ul className="text-sm list-disc list-inside mb-4 max-h-32 overflow-y-auto">
+              {missingCatalogLines.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+            {pendingCatalogProducts.length > 0 && (
+              <p className="text-sm text-gray-600 mb-4">
+                {pendingCatalogProducts.length} produit(s) reconnu(s) peuvent être ajoutés.
+              </p>
+            )}
+            <div className="flex flex-col gap-2">
+              {pendingCatalogProducts.length > 0 && (
+                <button
+                  type="button"
+                  className="btn btn-primary w-full"
+                  onClick={() => void confirmAddFoundCatalogOnly()}
+                  disabled={loading}
+                >
+                  Ajouter seulement les produits existants
+                </button>
+              )}
+              <button
+                type="button"
+                className="btn btn-secondary w-full"
+                onClick={() => void confirmCreateMissingAndAddAll()}
+                disabled={loading}
+              >
+                Créer les manquants et tout ajouter
+              </button>
+              <button
+                type="button"
+                className="text-sm text-gray-600"
+                onClick={() => {
+                  setShowMissingCatalogDialog(false)
+                  setMissingCatalogLines([])
+                  setPendingCatalogProducts([])
+                }}
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {detailProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <div className="flex justify-between items-start mb-3">
+              <h3 className="font-semibold text-lg">{formatProductLabel(detailProduct)}</h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setDetailProduct(null)
+                  setDetailPlacements([])
+                }}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            {detailProduct.upc && (
+              <p className="text-sm text-gray-600 mb-2">UPC : {detailProduct.upc}</p>
+            )}
+            <h4 className="text-sm font-medium text-gray-700 mb-2">Emplacements en magasin</h4>
+            {detailPlacements.length === 0 ? (
+              <p className="text-sm text-gray-500">Aucun magasin associé.</p>
+            ) : (
+              <ul className="text-sm space-y-2">
+                {detailPlacements.map((pl, i) => (
+                  <li key={i} className="bg-gray-50 p-2 rounded">
+                    <strong>{pl.stores?.name}</strong>
+                    {pl.aisle && ` — ${pl.aisle}`}
+                    {pl.comment && (
+                      <span className="block text-gray-500">{pl.comment}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

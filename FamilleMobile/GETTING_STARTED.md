@@ -108,6 +108,10 @@ Assurez-vous d'avoir exécuté toutes les migrations dans l'ordre :
 8. `008_fix_schedules_rls_for_all_members.sql`
 9. `009_add_shared_lists.sql`
 10. `010_enable_realtime_shared_lists.sql`
+11. … (voir `FamilleWeb/MIGRATIONS.md` pour 011–022)
+12. `023_add_products_and_stores.sql` — catalogue produits et magasins
+13. `024_extend_shared_list_items_products.sql` — listes hybrides + RPC
+14. `025_enable_realtime_products.sql` — Realtime catalogue
 
 ## 📋 Fonctionnalités
 

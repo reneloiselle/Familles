@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/shared_list.dart';
+import '../models/product.dart';
 import '../services/supabase_service.dart';
 
 /// Provider pour la gestion des listes partagées
@@ -271,7 +272,43 @@ class ListsProvider with ChangeNotifier {
     }
   }
 
-  Future<void> addItems(List<String> texts) async {
+  bool isProductOnList(String productId) {
+    return _items.any((item) => item.productId == productId);
+  }
+
+  /// Retourne les lignes sans correspondance exacte dans le catalogue.
+  Future<List<String>> findMissingCatalogLines(
+    String familyId,
+    List<String> lines,
+  ) async {
+    final missing = <String>[];
+    for (final line in lines) {
+      final id = await _service.findProduct(
+        familyId: familyId,
+        name: line,
+      );
+      if (id == null) missing.add(line);
+    }
+    return missing;
+  }
+
+  List<String> _filterNewTextLines(List<String> texts) {
+    final seen = <String>{};
+    final result = <String>[];
+    for (final line in texts) {
+      final key = line.trim().toLowerCase();
+      if (key.isEmpty) continue;
+      final already = _items.any(
+        (item) => item.text.trim().toLowerCase() == key,
+      );
+      if (already || seen.contains(key)) continue;
+      seen.add(key);
+      result.add(line.trim());
+    }
+    return result;
+  }
+
+  Future<void> addItemsPlainText(List<String> texts) async {
     if (_selectedList == null || texts.isEmpty) return;
 
     _isLoading = true;
@@ -284,15 +321,107 @@ class ListsProvider with ChangeNotifier {
         throw Exception('Vous devez être connecté');
       }
 
+      final newLines = _filterNewTextLines(texts);
+      if (newLines.isEmpty) return;
+
       await _service.addSharedListItems(
         listId: _selectedList!.id,
-        texts: texts,
+        texts: newLines,
         createdBy: user.id,
       );
-      // Realtime mettra à jour automatiquement _items
     } catch (e) {
       _error = e.toString();
       rethrow;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<List<String>> previewMissingCatalogLines(
+    String familyId,
+    List<String> lines,
+  ) async {
+    return findMissingCatalogLines(familyId, lines);
+  }
+
+  Future<List<String>> addCatalogLinesValidated({
+    required String familyId,
+    required List<String> lines,
+    bool createMissing = false,
+  }) async {
+    if (_selectedList == null || lines.isEmpty) return [];
+
+    final user = _service.currentUser;
+    if (user == null) throw Exception('Vous devez être connecté');
+
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    final missing = <String>[];
+
+    try {
+      for (final line in lines) {
+        final productId = await _service.findProduct(
+          familyId: familyId,
+          name: line,
+        );
+
+        if (productId == null) {
+          missing.add(line);
+          if (!createMissing) continue;
+        }
+
+        String? resolvedId = productId;
+        if (resolvedId == null && createMissing) {
+          resolvedId = await _service.resolveOrCreateProduct(
+            familyId: familyId,
+            userId: user.id,
+            name: line,
+          );
+        }
+
+        if (resolvedId == null) continue;
+
+        if (isProductOnList(resolvedId)) continue;
+
+        final product = await _service.getProduct(resolvedId);
+        if (product == null) continue;
+
+        await _service.addProductToSharedList(
+          listId: _selectedList!.id,
+          product: product,
+          createdBy: user.id,
+        );
+      }
+      return missing;
+    } catch (e) {
+      _error = e.toString();
+      rethrow;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> addProductItem(Product product) async {
+    if (_selectedList == null) return;
+
+    if (isProductOnList(product.id)) return;
+
+    final user = _service.currentUser;
+    if (user == null) throw Exception('Vous devez être connecté');
+
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      await _service.addProductToSharedList(
+        listId: _selectedList!.id,
+        product: product,
+        createdBy: user.id,
+      );
     } finally {
       _isLoading = false;
       notifyListeners();
