@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { Plus, Trash2, Edit2, CheckCircle2, Circle, List as ListIcon, X } from 'lucide-react'
@@ -56,9 +56,10 @@ export function SharedListsManagement({ user, familyId }: SharedListsManagementP
   const [editingItemText, setEditingItemText] = useState('')
   const [bulkAddText, setBulkAddText] = useState('')
   const [loading, setLoading] = useState(false)
+  const [listsLoading, setListsLoading] = useState(true)
   const [error, setError] = useState('')
   const router = useRouter()
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
 
   const [listForm, setListForm] = useState({
     name: '',
@@ -66,8 +67,56 @@ export function SharedListsManagement({ user, familyId }: SharedListsManagementP
     color: '#3b82f6',
   })
 
+  const loadLists = useCallback(async () => {
+    if (!familyId) {
+      setLists([])
+      setListsLoading(false)
+      return
+    }
+
+    setListsLoading(true)
+    try {
+      let { data, error } = await supabase
+        .from('shared_lists')
+        .select('*')
+        .eq('family_id', familyId)
+        .order('updated_at', { ascending: false })
+
+      if (error?.message?.includes('updated_at')) {
+        ;({ data, error } = await supabase
+          .from('shared_lists')
+          .select('*')
+          .eq('family_id', familyId)
+          .order('created_at', { ascending: false }))
+      }
+
+      if (error) {
+        if (
+          error.message?.includes('schema cache') ||
+          error.message?.includes('does not exist') ||
+          (error.message?.includes('relation') && error.message?.includes('does not exist')) ||
+          error.code === '42P01'
+        ) {
+          throw new Error('TABLE_NOT_FOUND')
+        }
+        throw error
+      }
+      setLists(data || [])
+      setError('')
+    } catch (err: any) {
+      console.error('loadLists:', err)
+      if (err.message === 'TABLE_NOT_FOUND') {
+        setError('MIGRATION_REQUIRED')
+      } else {
+        setError(err.message || 'Erreur lors du chargement des listes')
+      }
+    } finally {
+      setListsLoading(false)
+    }
+  }, [familyId, supabase])
+
   useEffect(() => {
-    loadLists()
+    void loadLists()
 
     // Pas de filtre serveur : les DELETE ne passent pas les filtres postgres_changes
     const listsChannel = supabase
@@ -101,8 +150,10 @@ export function SharedListsManagement({ user, familyId }: SharedListsManagementP
               current?.id === updated.id ? updated : current
             )
           } else if (payload.eventType === 'DELETE') {
-            const deletedId = (payload.old as SharedList | undefined)?.id
+            const old = payload.old as SharedList | undefined
+            const deletedId = old?.id
             if (!deletedId) return
+            if (old?.family_id && old.family_id !== familyId) return
             setLists((prev) => {
               if (!prev.some((list) => list.id === deletedId)) return prev
               return prev.filter((list) => list.id !== deletedId)
@@ -122,7 +173,7 @@ export function SharedListsManagement({ user, familyId }: SharedListsManagementP
     return () => {
       supabase.removeChannel(listsChannel)
     }
-  }, [familyId, supabase])
+  }, [familyId, supabase, loadLists])
 
   useEffect(() => {
     if (!selectedList) return
@@ -170,35 +221,6 @@ export function SharedListsManagement({ user, familyId }: SharedListsManagementP
       supabase.removeChannel(itemsChannel)
     }
   }, [selectedList?.id, supabase])
-
-  const loadLists = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('shared_lists')
-        .select('*')
-        .eq('family_id', familyId)
-        .order('updated_at', { ascending: false })
-
-      if (error) {
-        // Check if the error is about table not existing
-        if (error.message?.includes('schema cache') || 
-            error.message?.includes('does not exist') ||
-            error.message?.includes('relation') && error.message?.includes('does not exist') ||
-            error.code === '42P01') { // PostgreSQL error code for "undefined table"
-          throw new Error('TABLE_NOT_FOUND')
-        }
-        throw error
-      }
-      setLists(data || [])
-      setError('')
-    } catch (err: any) {
-      if (err.message === 'TABLE_NOT_FOUND') {
-        setError('MIGRATION_REQUIRED')
-      } else {
-        setError(err.message || 'Erreur lors du chargement des listes')
-      }
-    }
-  }
 
   const loadItems = async (listId: string) => {
     try {
@@ -562,7 +584,9 @@ export function SharedListsManagement({ user, familyId }: SharedListsManagementP
             )}
 
             <div className="space-y-2">
-              {lists.length === 0 ? (
+              {listsLoading ? (
+                <p className="text-gray-500 text-sm">Chargement des listes…</p>
+              ) : lists.length === 0 ? (
                 <p className="text-gray-500 text-sm">Aucune liste pour le moment</p>
               ) : (
                 lists.map((list) => (
@@ -582,7 +606,7 @@ export function SharedListsManagement({ user, familyId }: SharedListsManagementP
                       <div className="flex items-center gap-2 flex-1">
                         <div
                           className="w-4 h-4 rounded"
-                          style={{ backgroundColor: list.color }}
+                          style={{ backgroundColor: list.color || '#3b82f6' }}
                         />
                         <div className="flex-1">
                           <p className="font-semibold">{list.name}</p>
@@ -634,7 +658,7 @@ export function SharedListsManagement({ user, familyId }: SharedListsManagementP
                   <h2 className="text-2xl font-bold flex items-center gap-2">
                     <div
                       className="w-5 h-5 rounded"
-                      style={{ backgroundColor: selectedList.color }}
+                      style={{ backgroundColor: selectedList.color || '#3b82f6' }}
                     />
                     {selectedList.name}
                   </h2>

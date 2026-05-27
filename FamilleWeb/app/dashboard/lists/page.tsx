@@ -3,12 +3,15 @@ import { redirect } from 'next/navigation'
 import { SharedListsManagement } from '@/components/SharedListsManagement'
 
 async function getUserFamily(supabase: any, userId: string) {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('family_members')
     .select('id, family_id, role, families(id, name)')
     .eq('user_id', userId)
-    .single()
-  
+    .maybeSingle()
+
+  if (error) {
+    console.error('Erreur chargement famille (listes):', error.message)
+  }
   return data
 }
 
