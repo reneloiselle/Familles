@@ -23,7 +23,7 @@ Monorepo de gestion familiale : **FamilleWeb** (Next.js), **FamilleMobile** (Flu
 | `FamilleMobile/` | App Flutter Android/iOS | Oui |
 | `mcp-server/` | Serveur MCP (outils IA → Supabase) | Oui |
 
-Fichiers utiles : `FamilleWeb/README.md`, `FamilleWeb/PROJET_RECAP.md`, README de chaque sous-projet.
+Fichiers utiles : `FamilleWeb/README.md`, `FamilleWeb/GETTING_STARTED.md`, `FamilleWeb/MIGRATIONS.md`, `FamilleWeb/PROJET_RECAP.md`, README de chaque sous-projet.
 
 **Skills agents (FamilleWeb)** : `FamilleWeb/.agents/skills/` — documentation Syncfusion React pour Cursor (66 skills, voir `SKILL.md` par composant). Détails dans `FamilleWeb/AGENTS.md`.
 
@@ -46,7 +46,7 @@ Fichiers utiles : `FamilleWeb/README.md`, `FamilleWeb/PROJET_RECAP.md`, README d
 
 ## Domaine métier (rappel)
 
-- **Famille** : membres, rôles parent/enfant, invitations.
+- **Famille** : membres, rôles parent/enfant, invitations, profil (nom, emoji, couleur par membre — migration `022`).
 - **Horaires** : agenda personnel + vue famille, sync iCal.
 - **Tâches** : assignation, statuts, échéances.
 - **Listes partagées** : listes collaboratives avec items cochables.

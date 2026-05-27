@@ -1,138 +1,115 @@
-# Récapitulatif du projet FamilleWeb
+# Récapitulatif — FamilleWeb
 
-## ✅ Fonctionnalités implémentées
+État fonctionnel du sous-projet web (monorepo Familles). Dernière mise à jour : gestion des profils membres (nom, emoji, couleur) et documentation migrations.
 
-### 1. Gestion de famille
-- ✅ Création de familles
-- ✅ Ajout de membres par email
-- ✅ Gestion des rôles (Parent/Enfant)
-- ✅ Retrait de membres (parents uniquement)
-- ✅ Affichage de tous les membres avec leurs emails
+## Fonctionnalités implémentées
 
-### 2. Gestion des horaires
-- ✅ Création d'horaires pour chaque membre
-- ✅ Vue personnelle (agenda individuel)
-- ✅ Vue famille complète pour les parents
-- ✅ Filtrage par date
-- ✅ Suppression d'horaires
+### Famille (`/dashboard/family`)
 
-### 3. Gestion des tâches
-- ✅ Création de tâches
-- ✅ Assignation aux membres
-- ✅ Suivi des statuts (En attente, En cours, Terminé)
-- ✅ Dates d'échéance
-- ✅ Filtrage par statut
-- ✅ Mise à jour des statuts
+- Création et renommage de la famille (parents)
+- Invitations par email (avec nom, emoji et couleur optionnels)
+- Édition des membres : nom, emoji (`avatar_url`), couleur hex (`color`), rôle (parents)
+- Auto-édition du profil par chaque membre connecté (nom, emoji, couleur)
+- Retrait de membres (parents, sauf soi-même)
+- Membres sans compte (enfants invités par email)
 
-### 4. Authentification
-- ✅ Inscription
-- ✅ Connexion
-- ✅ Déconnexion
-- ✅ Protection des routes
+### Planning (`/dashboard/planning`)
 
-### 5. Interface utilisateur
-- ✅ Design moderne avec Tailwind CSS
-- ✅ Navigation intuitive
-- ✅ Responsive
-- ✅ Tableau de bord avec aperçu
+- Grille hebdomadaire multi-membres
+- Couleur par membre (persistée en base après migration `022`, sinon palette calculée)
+- Création / édition d’horaires, conflits, événements iCal
 
-## 📁 Structure du projet
+### Horaires (`/dashboard/schedule`)
+
+- Vues personnelle, famille, semaine, mois
+- Abonnements calendrier iCal (`CalendarSubscriptionManager`)
+- Lieu optionnel (Google Maps)
+- Affichage membre : avatar + couleur sur cartes et grilles
+
+### Tâches (`/dashboard/tasks`)
+
+- CRUD, assignation, priorités, échéances
+- Statuts : à faire / complété
+- Realtime
+- Avatar et couleur de l’assigné sur les cartes
+
+### Listes partagées (`/dashboard/lists`)
+
+- Listes collaboratives avec items cochables
+- Couleur par liste, Realtime (migrations `009`, `010`, `020`)
+
+### Autres
+
+- Auth (inscription, connexion, middleware)
+- Accueil dashboard avec aperçu tâches / horaires
+- Clés API (`/dashboard/api-keys`) et route `/api/mcp`
+- Chat serveur : `/api/chat`, `/api/chat/stream`, `/api/chat/tts` (clé OpenAI)
+- Sync iCal : `/api/calendar/sync` (service role)
+
+## Stack
+
+Next.js 14 (App Router), TypeScript, Tailwind CSS, Supabase (PostgreSQL, Auth, Realtime), date-fns, lucide-react, node-ical, Google Maps (optionnel).
+
+## Structure actuelle (extraits)
 
 ```
 FamilleWeb/
-├── app/                          # Pages Next.js (App Router)
-│   ├── auth/                    # Authentification
-│   │   ├── login/
-│   │   └── signup/
-│   ├── dashboard/               # Tableau de bord
-│   │   ├── family/             # Gestion de famille
-│   │   ├── schedule/           # Gestion des horaires
-│   │   ├── tasks/              # Gestion des tâches
-│   │   └── page.tsx            # Dashboard principal
-│   ├── layout.tsx              # Layout principal
-│   ├── page.tsx                # Page d'accueil
-│   └── providers.tsx           # Providers React (Auth)
-│
-├── components/                  # Composants réutilisables
-│   ├── DashboardLayout.tsx
+├── app/dashboard/
+│   ├── family/      # Gestion famille
+│   ├── planning/    # Grille semaine famille
+│   ├── schedule/    # Horaires + iCal
+│   ├── tasks/
+│   ├── lists/
+│   └── api-keys/
+├── components/
 │   ├── FamilyManagement.tsx
-│   ├── Navbar.tsx
+│   ├── InvitationManager.tsx
+│   ├── MemberAvatar.tsx          # Avatar + couleur membre
+│   ├── FamilyPlanningWeekView.tsx
 │   ├── ScheduleManagement.tsx
-│   └── TaskManagement.tsx
-│
+│   ├── TaskManagement.tsx
+│   ├── SharedListsManagement.tsx
+│   └── ...
 ├── lib/
-│   └── supabase/               # Configuration Supabase
-│       ├── client.ts
-│       ├── server.ts
-│       └── database.types.ts
-│
-└── supabase/
-    └── migrations/             # Migrations SQL
-        ├── 001_initial_schema.sql
-        └── 002_add_user_email_function.sql
+│   ├── family/memberDisplay.ts   # Nom, avatar, couleur, permissions
+│   ├── schedule/memberColors.ts  # Palette + fallback
+│   └── supabase/
+├── supabase/migrations/          # 001 … 022
+├── README.md
+├── GETTING_STARTED.md
+├── MIGRATIONS.md
+└── AGENTS.md
 ```
 
-## 🗄️ Base de données
+## Schéma `family_members` (champs UI)
 
-### Tables créées
+| Colonne | Usage |
+|---------|--------|
+| `name` | Nom affiché |
+| `email` | Invitation / membre sans compte |
+| `role` | `parent` \| `child` |
+| `avatar_url` | Emoji (ex. 👦) |
+| `color` | Couleur hex `#RRGGBB` (migration `022`) |
+| `invitation_status` | pending / accepted / declined |
 
-1. **families**
-   - id, name, created_at, created_by
+## Migrations
 
-2. **family_members**
-   - id, family_id, user_id, role, created_at
+22 fichiers SQL — voir [MIGRATIONS.md](MIGRATIONS.md). **Toutes doivent être appliquées** sur l’instance Supabase utilisée par `.env.local`.
 
-3. **schedules**
-   - id, family_member_id, title, description, start_time, end_time, date
+## Pistes d’évolution (hors scope actuel)
 
-4. **tasks**
-   - id, family_id, assigned_to, title, description, status, due_date, created_by
+- Upload photo membre (Supabase Storage)
+- Statut « en ligne » (Presence)
+- Alignement FamilleMobile sur `color` + `avatar_url`
+- FamilleMobile : même URL Supabase que FamilleWeb en dev
 
-### Sécurité
+## Documentation
 
-- ✅ Row Level Security (RLS) activé sur toutes les tables
-- ✅ Politiques de sécurité définies
-- ✅ Seuls les parents peuvent ajouter/retirer des membres
-- ✅ Les membres ne peuvent voir que leurs familles
-
-## 🚀 Prochaines étapes
-
-1. **Installer les dépendances**
-   ```bash
-   cd FamilleWeb
-   npm install
-   ```
-
-2. **Configurer Supabase**
-   - Créer un projet sur supabase.com
-   - Exécuter les migrations SQL
-   - Récupérer les clés API
-
-3. **Configurer l'environnement**
-   - Créer `.env.local`
-   - Ajouter les variables d'environnement
-
-4. **Lancer l'application**
-   ```bash
-   npm run dev
-   ```
-
-Voir `GETTING_STARTED.md` pour le guide complet.
-
-## 📝 Notes importantes
-
-- Les membres doivent créer un compte avant d'être ajoutés
-- Seuls les parents peuvent gérer les membres
-- Tous les membres voient les horaires de la famille
-- Les parents ont une vue complète de tous les horaires
-
-## 🛠️ Stack technique
-
-- **Next.js 14** : Framework React avec App Router
-- **TypeScript** : Typage statique
-- **Supabase** : Base de données PostgreSQL + Auth
-- **Tailwind CSS** : Framework CSS utilitaire
-- **Lucide React** : Icônes
-
-L'application est prête à être déployée ! 🎉
-
+| Fichier | Rôle |
+|---------|------|
+| [README.md](README.md) | Vue d’ensemble, config, commandes |
+| [GETTING_STARTED.md](GETTING_STARTED.md) | Démarrage rapide |
+| [MIGRATIONS.md](MIGRATIONS.md) | Migrations SQL et dépannage |
+| [AGENTS.md](AGENTS.md) | Consignes pour les agents IA |
+| [DOCKER.md](DOCKER.md) | Conteneur et déploiement |
+| `archives/plans/` | Guides historiques (invitations, listes, Realtime) |

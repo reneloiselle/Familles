@@ -12,49 +12,68 @@ npm run build
 npm run lint
 ```
 
-Config locale : `.env.local` (voir `README.md`). Ne pas commiter les fichiers `.env*`.
+Config locale : `.env.local` (voir [README.md](README.md), [GETTING_STARTED.md](GETTING_STARTED.md)). Ne pas commiter les fichiers `.env*`.
 
 ## Arborescence clé
 
 | Chemin | Usage |
 |--------|--------|
 | `app/` | Pages et routes API (`app/api/`) |
-| `components/` | Composants React du dashboard |
-| `lib/supabase/` | Client/serveur Supabase, types DB |
-| `supabase/migrations/` | Migrations SQL (ordre numérique) |
-| `.agents/skills/` | Skills Syncfusion React pour les agents Cursor |
-| `middleware.ts` | Protection des routes |
+| `components/` | UI dashboard (`*Management.tsx`, `MemberAvatar.tsx`) |
+| `lib/family/` | Affichage membres (`memberDisplay.ts`) |
+| `lib/schedule/` | Dates, layout grille, couleurs (`memberColors.ts`) |
+| `lib/supabase/` | Client/serveur, types DB, erreurs colonnes |
+| `supabase/migrations/` | Migrations SQL (ordre numérique, voir [MIGRATIONS.md](MIGRATIONS.md)) |
+| `.agents/skills/` | Skills Syncfusion React (66 composants) |
+| `middleware.ts` | Session Supabase |
 
-Routes API notables : `app/api/chat/`, `app/api/calendar/sync/`, `app/api/mcp/`.
+### Routes dashboard
+
+| Route | Composant principal |
+|-------|---------------------|
+| `/dashboard/family` | `FamilyManagement`, `InvitationManager` |
+| `/dashboard/planning` | `FamilyPlanningWeekView` |
+| `/dashboard/schedule` | `ScheduleManagement`, `CalendarSubscriptionManager` |
+| `/dashboard/tasks` | `TaskManagement` |
+| `/dashboard/lists` | `SharedListsManagement` |
+
+### Routes API
+
+`app/api/chat/`, `app/api/calendar/sync/`, `app/api/mcp/`
+
+## Membres — conventions
+
+- Table `family_members` : `name`, `avatar_url` (emoji), `color` (hex, migration **022**), `role`, `email`, `invitation_status`.
+- Utilitaires : [`lib/family/memberDisplay.ts`](lib/family/memberDisplay.ts) — `getMemberDisplayName`, `getMemberAvatar`, `getMemberColor`, `canEditMember`, `EMOJI_OPTIONS`.
+- Composant : [`components/MemberAvatar.tsx`](components/MemberAvatar.tsx) — réutiliser pour avatar + pastille couleur (ne pas dupliquer les helpers dans chaque `*Management.tsx`).
+- Couleurs : [`lib/schedule/memberColors.ts`](lib/schedule/memberColors.ts) — palette `MEMBER_COLOR_HEX` + fallback par index si `color` absent en DB.
+- **Ne pas** lister `color` dans les `SELECT` tant que la migration 022 n’est pas appliquée sur l’instance cible, ou gérer l’erreur via [`lib/supabase/columnErrors.ts`](lib/supabase/columnErrors.ts) pour les écritures.
 
 ## Skills agents (`.agents/skills/`)
 
-Le dossier `.agents/skills/` regroupe **66 skills** Syncfusion React (un dossier par composant ou famille de composants).
-
-- **Point d'entrée** : lire `SKILL.md` dans le dossier du skill concerné (ex. `.agents/skills/syncfusion-react-scheduler/SKILL.md`).
-- **Détails** : le sous-dossier `references/` contient la doc API, les exemples et les patterns d'intégration.
-- **Skills transverses** : `syncfusion-react-common` (globalisation, animations, etc.), `syncfusion-react-themes`, `syncfusion-react-license`.
-
-Utiliser ces skills lorsque la tâche touche à Syncfusion (nouveau composant, migration UI, configuration licence/thème). Ne pas improviser sans consulter le skill correspondant.
+66 skills Syncfusion React — lire le `SKILL.md` du composant concerné avant toute intégration Syncfusion. Transverses : `syncfusion-react-common`, `syncfusion-react-themes`, `syncfusion-react-license`.
 
 ## Conventions code
 
-- **App Router** : Server Components par défaut ; `'use client'` seulement si état, effets ou événements navigateur.
-- **Supabase** : `lib/supabase/client.ts` (navigateur), `lib/supabase/server.ts` (SSR / routes API).
-- **Styles** : Tailwind ; suivre les patterns des composants existants (`components/`).
-- **Dates** : `date-fns` (déjà dans le projet).
-- **Icônes** : `lucide-react`.
+- **App Router** : Server Components par défaut ; `'use client'` si état, effets ou événements navigateur.
+- **Supabase** : `lib/supabase/client.ts` (navigateur), `lib/supabase/server.ts` (SSR / API).
+- **Client Supabase côté client** : instancier avec `useMemo(() => createClient(), [])` dans les composants avec `useEffect` (éviter boucles infinies).
+- **Styles** : Tailwind ; suivre les composants existants.
+- **Dates** : `date-fns`. **Icônes** : `lucide-react`.
+- **Libellés UI** : français. **Identifiants code** : anglais.
 
 ## Migrations et schéma
 
-- Nouvelle migration : fichier numéroté suivant dans `supabase/migrations/` (ex. `021_…sql`).
-- Après changement de schéma : mettre à jour `lib/supabase/database.types.ts` si les types sont maintenus à la main.
-- RLS : respecter les politiques existantes ; tester l’accès membre vs parent.
+- Nouvelle migration : `supabase/migrations/0NN_description.sql` (numéro suivant le dernier fichier).
+- Documenter dans [MIGRATIONS.md](MIGRATIONS.md).
+- Mettre à jour [`lib/supabase/database.types.ts`](lib/supabase/database.types.ts) si le schéma change.
+- RLS : tester accès parent vs enfant ; ne pas casser `can_user_view_family` / `is_user_parent_of_family`.
 
 ## Realtime
 
-- Abonnements côté client sur les tables activées (voir migrations `*_realtime_*`).
-- Problème de synchro listes/tâches : vérifier `REPLICA IDENTITY` / migrations récentes (ex. listes partagées).
+- Tables : `shared_lists`, `shared_list_items` (`010`, `020`), `tasks` (`011`), `schedules` (`012`).
+- `SharedListsManagement` : pas de filtre serveur sur les channels DELETE ; filtrer côté client par `family_id` / `list_id`.
+- Problème synchro listes : vérifier `REPLICA IDENTITY FULL` (migration `020`).
 
 ## Variables d’environnement
 
@@ -68,6 +87,17 @@ Utiliser ces skills lorsque la tâche touche à Syncfusion (nouveau composant, m
 
 ## À éviter
 
-- Mettre `service_role` dans un composant client ou `NEXT_PUBLIC_*`.
-- Dupliquer la logique métier déjà dans un composant `*Management.tsx` sans raison.
+- Commiter `.env`, `appparm` avec vraies clés, ou `service_role` en `NEXT_PUBLIC_*`.
+- Dupliquer la logique membre hors de `memberDisplay.ts` / `MemberAvatar`.
+- Sur-ingénierie ou refactor hors périmètre de la demande.
 - Modifier `archives/plans/` sauf documentation historique demandée.
+- Supposer que la migration **022** est appliquée sans vérifier (symptôme : membres/listes vides si requêtes invalides).
+
+## Dépannage rapide (agents)
+
+| Symptôme | Vérifier |
+|----------|----------|
+| Membres invisibles | Migration `022`, colonne `color` dans les `SELECT` |
+| Listes vides | Migration `009`, même `NEXT_PUBLIC_SUPABASE_URL` que les données |
+| Realtime DELETE | Migration `020` |
+| Boucle chargement | `useMemo` sur `createClient()` dans les `useEffect` |
