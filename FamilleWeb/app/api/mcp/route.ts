@@ -2,34 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  throw new Error('Configuration Supabase manquante')
-}
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-
-// Fonction helper pour obtenir l'utilisateur et la famille
-async function getUserAndFamily(userId: string) {
-  const { data: familyMember, error: memberError } = await supabase
-    .from('family_members')
-    .select('*, families(*)')
-    .eq('user_id', userId)
-    .maybeSingle()
-
-  if (memberError || !familyMember) {
-    throw new Error(`Utilisateur non trouvé ou non membre d'une famille: ${memberError?.message || 'Aucun membre trouvé'}`)
-  }
-
-  return {
-    familyMember,
-    familyId: familyMember.family_id,
-    family: familyMember.families,
-  }
-}
-
 // Générer une clé API
 function generateApiKey(): { key: string; hash: string; prefix: string } {
   const prefix = crypto.randomBytes(6).toString('base64url').substring(0, 8)
@@ -41,6 +13,16 @@ function generateApiKey(): { key: string; hash: string; prefix: string } {
 
 export async function POST(request: NextRequest) {
   try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+    if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceRoleKey) {
+      return NextResponse.json({ error: 'Configuration Supabase manquante' }, { status: 500 })
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceRoleKey)
+
     // Vérifier l'authentification
     const authHeader = request.headers.get('authorization')
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -48,7 +30,7 @@ export async function POST(request: NextRequest) {
     }
 
     const token = authHeader.substring(7)
-    const supabaseClient = createClient(SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: {
         headers: {
           Authorization: `Bearer ${token}`,

@@ -25,6 +25,8 @@ Monorepo de gestion familiale : **FamilleWeb** (Next.js), **FamilleMobile** (Flu
 
 Fichiers utiles : `FamilleWeb/README.md`, `FamilleWeb/PROJET_RECAP.md`, README de chaque sous-projet.
 
+**Skills agents (FamilleWeb)** : `FamilleWeb/.agents/skills/` — documentation Syncfusion React pour Cursor (66 skills, voir `SKILL.md` par composant). Détails dans `FamilleWeb/AGENTS.md`.
+
 ## Sécurité (obligatoire)
 
 - **Ne jamais** commiter `.env`, `.env.local`, `appparm` avec de vraies clés, ni `SUPABASE_SERVICE_ROLE_KEY`.

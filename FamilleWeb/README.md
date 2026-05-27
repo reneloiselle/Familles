@@ -14,6 +14,7 @@ Application web (Next.js 14 / App Router) pour gérer votre famille, organiser l
 - [Commandes](#commandes)
 - [Docker / Podman](#docker--podman)
 - [Serveur MCP](#serveur-mcp)
+- [Skills agents (Cursor)](#skills-agents-cursor)
 - [Docs du repo](#docs-du-repo)
 - [Licence](#licence)
 
@@ -145,6 +146,9 @@ FamilleWeb/
 │   └── supabase/               # Configuration Supabase
 ├── supabase/                     # Scripts SQL et migrations
 │   └── migrations/
+├── .agents/                      # Ressources pour les agents IA (Cursor)
+│   └── skills/                  # Skills Syncfusion React (66 composants)
+├── AGENTS.md                     # Instructions agents pour ce sous-projet
 └── package.json
 ```
 
@@ -217,6 +221,19 @@ Le repo inclut un serveur MCP (Model Context Protocol) dans le dossier `mcp-serv
 L'application web expose également une route `app/api/mcp/route.ts` qui sert à gérer des clés API depuis l’interface (création/liste/révocation/suppression). Ce n’est pas le serveur MCP lui‑même : le serveur MCP vit dans `mcp-server/` et communique via **stdio** avec le client MCP.
 
 Voir `mcp-server/README.md` pour l'installation et la configuration.
+
+## Skills agents (Cursor)
+
+Le dossier `.agents/skills/` contient des **skills** pour guider les agents IA (ex. Cursor) lors de l'intégration de composants **Syncfusion React** dans FamilleWeb.
+
+Chaque skill correspond à un composant ou à une famille de composants Syncfusion (grille, calendrier, scheduler, inputs, etc.) et inclut :
+
+- un fichier `SKILL.md` : point d'entrée (description, cas d'usage, navigation) ;
+- un sous-dossier `references/` : documentation détaillée (API, exemples, patterns).
+
+Exemples de skills disponibles : `syncfusion-react-grid`, `syncfusion-react-scheduler`, `syncfusion-react-calendar`, `syncfusion-react-common`, `syncfusion-react-themes`, `syncfusion-react-license`.
+
+Pour un agent : consulter le `SKILL.md` du skill concerné avant d'implémenter ou modifier un composant Syncfusion. Voir aussi `AGENTS.md` à la racine de FamilleWeb.
 
 ## Docs du repo
 

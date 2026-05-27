@@ -15,6 +15,7 @@ class ListsProvider with ChangeNotifier {
   RealtimeChannel? _listsChannel;
   RealtimeChannel? _itemsChannel;
   String? _currentFamilyId;
+  String? _currentListId;
 
   List<SharedList> get lists => _lists;
   SharedList? get selectedList => _selectedList;
@@ -50,35 +51,33 @@ class ListsProvider with ChangeNotifier {
     _listsChannel?.unsubscribe();
     _itemsChannel?.unsubscribe();
 
-    // Subscription pour les listes
+    // Pas de filtre serveur : les événements DELETE ne sont pas émis avec un filtre
     _listsChannel = SupabaseService.client
         .channel('shared_lists_$familyId')
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'shared_lists',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'family_id',
-            value: familyId,
-          ),
           callback: (payload) {
-            _handleListChange(payload);
+            _handleListChange(payload, familyId);
           },
         )
         .subscribe();
   }
 
-  void _handleListChange(PostgresChangePayload payload) {
+  void _handleListChange(PostgresChangePayload payload, String familyId) {
     switch (payload.eventType) {
       case PostgresChangeEvent.insert:
         final newList = SharedList.fromJson(payload.newRecord);
+        if (newList.familyId != familyId) return;
+        if (_lists.any((list) => list.id == newList.id)) return;
         _lists = [newList, ..._lists];
         _lists.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
         notifyListeners();
         break;
       case PostgresChangeEvent.update:
         final updatedList = SharedList.fromJson(payload.newRecord);
+        if (updatedList.familyId != familyId) return;
         _lists = _lists.map((list) => list.id == updatedList.id ? updatedList : list).toList();
         _lists.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
         
@@ -89,13 +88,16 @@ class ListsProvider with ChangeNotifier {
         notifyListeners();
         break;
       case PostgresChangeEvent.delete:
-        final deletedId = payload.oldRecord['id'] as String;
+        final deletedId = payload.oldRecord['id'] as String?;
+        if (deletedId == null) return;
+        if (!_lists.any((list) => list.id == deletedId)) return;
         _lists = _lists.where((list) => list.id != deletedId).toList();
         
         // Vider la sélection si la liste supprimée était sélectionnée
         if (_selectedList?.id == deletedId) {
           _selectedList = null;
           _items = [];
+          _currentListId = null;
           _itemsChannel?.unsubscribe();
           _itemsChannel = null;
         }
@@ -108,6 +110,7 @@ class ListsProvider with ChangeNotifier {
 
   Future<void> selectList(SharedList list) async {
     _selectedList = list;
+    _currentListId = list.id;
     _items = [];
     
     // Nettoyer l'ancienne subscription d'éléments
@@ -122,55 +125,54 @@ class ListsProvider with ChangeNotifier {
   }
 
   void _setupItemsRealtimeSubscription(String listId) {
+    _currentListId = listId;
     // Nettoyer l'ancienne subscription
     _itemsChannel?.unsubscribe();
 
-    // Subscription pour les éléments de la liste
+    // Pas de filtre list_id côté serveur : les DELETE ne sont pas émis avec filtre
     _itemsChannel = SupabaseService.client
         .channel('shared_list_items_$listId')
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'shared_list_items',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'list_id',
-            value: listId,
-          ),
           callback: (payload) {
-            _handleItemChange(payload);
+            _handleItemChange(payload, listId);
           },
         )
         .subscribe();
   }
 
-  void _handleItemChange(PostgresChangePayload payload) {
+  void _sortItems() {
+    _items.sort((a, b) {
+      if (a.checked != b.checked) {
+        return a.checked ? 1 : -1;
+      }
+      return a.createdAt.compareTo(b.createdAt);
+    });
+  }
+
+  void _handleItemChange(PostgresChangePayload payload, String listId) {
     switch (payload.eventType) {
       case PostgresChangeEvent.insert:
         final newItem = SharedListItem.fromJson(payload.newRecord);
+        if (newItem.listId != listId) return;
+        if (_items.any((item) => item.id == newItem.id)) return;
         _items = [..._items, newItem];
-        _items.sort((a, b) {
-          // Trier par statut (non cochés en premier), puis par date
-          if (a.checked != b.checked) {
-            return a.checked ? 1 : -1;
-          }
-          return a.createdAt.compareTo(b.createdAt);
-        });
+        _sortItems();
         notifyListeners();
         break;
       case PostgresChangeEvent.update:
         final updatedItem = SharedListItem.fromJson(payload.newRecord);
+        if (updatedItem.listId != listId) return;
         _items = _items.map((item) => item.id == updatedItem.id ? updatedItem : item).toList();
-        _items.sort((a, b) {
-          if (a.checked != b.checked) {
-            return a.checked ? 1 : -1;
-          }
-          return a.createdAt.compareTo(b.createdAt);
-        });
+        _sortItems();
         notifyListeners();
         break;
       case PostgresChangeEvent.delete:
-        final deletedId = payload.oldRecord['id'] as String;
+        final deletedId = payload.oldRecord['id'] as String?;
+        if (deletedId == null) return;
+        if (!_items.any((item) => item.id == deletedId)) return;
         _items = _items.where((item) => item.id != deletedId).toList();
         notifyListeners();
         break;
@@ -252,7 +254,14 @@ class ListsProvider with ChangeNotifier {
 
     try {
       await _service.deleteSharedList(listId);
-      // Realtime mettra à jour automatiquement _lists
+      _lists = _lists.where((list) => list.id != listId).toList();
+      if (_selectedList?.id == listId) {
+        _selectedList = null;
+        _items = [];
+        _currentListId = null;
+        _itemsChannel?.unsubscribe();
+        _itemsChannel = null;
+      }
     } catch (e) {
       _error = e.toString();
       rethrow;
@@ -318,7 +327,7 @@ class ListsProvider with ChangeNotifier {
 
     try {
       await _service.deleteSharedListItem(itemId);
-      // Realtime mettra à jour automatiquement _items
+      _items = _items.where((item) => item.id != itemId).toList();
     } catch (e) {
       _error = e.toString();
       rethrow;

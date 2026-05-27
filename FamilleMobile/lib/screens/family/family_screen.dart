@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../config/supabase_config.dart';
 import '../../providers/family_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../models/family.dart';
@@ -379,8 +380,7 @@ class _InvitationManagerState extends State<_InvitationManager> {
   }
 
   String _getInvitationLink(String token) {
-    // TODO: Remplacer par l'URL de votre application
-    return 'https://votre-app.com/invitation/accept?token=$token';
+    return '${ApiConfig.baseUrl}/invitation/accept?token=$token';
   }
 
   @override

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import dynamic from 'next/dynamic'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { Plus, Calendar as CalendarIcon, Clock, Settings, MapPin, Map, X, Edit2, Trash2, ChevronLeft, ChevronRight, User as UserIcon } from 'lucide-react'
@@ -15,6 +16,17 @@ import {
   getWeekDays,
   parseLocalDate,
 } from '@/lib/schedule/dateUtils'
+
+const ScheduleResourceScheduler = dynamic(
+  () =>
+    import('./ScheduleResourceScheduler').then((mod) => mod.ScheduleResourceScheduler),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="card text-center py-12 text-gray-500">Chargement du calendrier...</div>
+    ),
+  }
+)
 
 interface Schedule {
   id: string
@@ -1213,126 +1225,39 @@ export function ScheduleManagement({
       )}
 
       {view === 'week' && (
-        <div className="card overflow-x-auto">
-          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-            <CalendarIcon className="w-5 h-5" />
-            Vue semaine - {weekDays[0] && new Date(weekDays[0]).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} au {weekDays[6] && new Date(weekDays[6]).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
-          </h2>
-
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr>
-                  <th className="border border-gray-300 bg-gray-100 p-3 text-left font-semibold sticky left-0 z-10 min-w-[150px]">
-                    Membre
-                  </th>
-                  {weekDays.map((day, idx) => {
-                    const date = parseLocalDate(day)
-                    const isToday = day === getLocalDateString()
-                    return (
-                      <th
-                        key={day}
-                        className={`border border-gray-300 bg-gray-100 p-3 text-center font-semibold min-w-[120px] ${isToday ? 'bg-primary-100' : ''
-                          }`}
-                      >
-                        <div className="font-bold">
-                          {date.toLocaleDateString('fr-FR', { weekday: 'short' })}
-                        </div>
-                        <div className="text-sm font-normal">
-                          {date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
-                        </div>
-                      </th>
-                    )
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {familyMembers.map((member) => {
-                  const memberSchedules = filteredSchedules.filter(
-                    (s) => s.family_member_id === member.id
-                  )
-                  const schedulesByDay = weekDays.reduce((acc: any, day) => {
-                    acc[day] = memberSchedules.filter((s) => s.date === day)
-                    return acc
-                  }, {})
-
-                  return (
-                    <tr key={member.id} className="hover:bg-gray-50">
-                      <td className="border border-gray-300 bg-gray-50 p-3 sticky left-0 z-10 font-medium">
-                        {member.user_id === user.id ? (
-                          <span className="font-semibold">Vous</span>
-                        ) : (
-                          <span>
-                            {member.name || member.email || `Membre ${member.id.slice(0, 8)}`}
-                          </span>
-                        )}
-                        <span className="ml-2 text-xl">{member.avatar_url || '👤'}</span>
-                        {member.role === 'parent' && (
-                          <span className="ml-2 text-xs text-gray-500">(Parent)</span>
-                        )}
-                      </td>
-                      {weekDays.map((day) => {
-                        const daySchedules = schedulesByDay[day] || []
-                        return (
-                          <td
-                            key={day}
-                            className="border border-gray-300 p-2 align-top min-h-[100px]"
-                          >
-                            <div className="space-y-1">
-                              {daySchedules.map((schedule: Schedule) => {
-                                const isExternal = !!schedule.subscription_id
-                                const color = isExternal ? getSubscriptionColor(schedule.subscription_id) : undefined
-                                const overlappingIds = getOverlappingScheduleIds(schedule, daySchedules)
-                                const hasOverlap = overlappingIds.length > 0
-                                const backToBackIds = getBackToBackScheduleIds(schedule, daySchedules)
-                                const hasBackToBack = backToBackIds.length > 0 && !hasOverlap
-
-                                return (
-                                  <div
-                                    key={schedule.id}
-                                    className={`rounded p-2 text-xs cursor-pointer transition-colors border-2 ${
-                                      hasOverlap
-                                        ? 'bg-red-500 text-white border-red-700 shadow-md'
-                                        : hasBackToBack
-                                          ? 'bg-yellow-500 text-white border-yellow-600'
-                                          : isExternal
-                                            ? 'text-white border-transparent'
-                                            : 'bg-primary-500 text-white border-primary-700 hover:bg-primary-600'
-                                    }`}
-                                    style={isExternal && !hasOverlap && !hasBackToBack ? { backgroundColor: color || '#3B82F6' } : {}}
-                                    title={`${schedule.title} - ${schedule.start_time} à ${schedule.end_time}${schedule.location ? ` - ${schedule.location}` : ''}${hasOverlap ? ' (Conflit d\'horaire)' : hasBackToBack ? ' (Possibilité de problème de transport)' : ''}`}
-                                  >
-                                    <div className="font-semibold truncate flex items-center gap-1">
-                                      {hasOverlap && <span>⚠️</span>}
-                                      {hasBackToBack && !hasOverlap && <span>🚗</span>}
-                                      {schedule.title}
-                                    </div>
-                                    <div className="truncate">{schedule.start_time} - {schedule.end_time}</div>
-                                    {schedule.location && (
-                                      <div className="text-xs opacity-75 flex items-center gap-1 mt-1">
-                                        <MapPin className="w-3 h-3" />
-                                        <span className="truncate">{schedule.location}</span>
-                                      </div>
-                                    )}
-                                  </div>
-                                )
-                              })}
-                            </div>
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  )
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <h2 className="text-xl font-semibold flex items-center gap-2">
+              <CalendarIcon className="w-5 h-5" />
+              Vue semaine (ressources)
+            </h2>
+            <div className="text-sm text-gray-600">
+              {weekDays[0] &&
+                new Date(weekDays[0]).toLocaleDateString('fr-FR', {
+                  day: 'numeric',
+                  month: 'long',
+                })}{' '}
+              au{' '}
+              {weekDays[6] &&
+                new Date(weekDays[6]).toLocaleDateString('fr-FR', {
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric',
                 })}
-              </tbody>
-            </table>
+            </div>
           </div>
 
-          {familyMembers.length === 0 && (
-            <p className="text-center text-gray-500 py-8">
-              Aucun membre dans la famille pour afficher les horaires
-            </p>
-          )}
+          <ScheduleResourceScheduler
+            currentUserId={user.id}
+            isParent={isParent}
+            selectedDate={selectedDate}
+            familyMembers={familyMembers}
+            schedules={filteredSchedules}
+            onSchedulesChange={(next) => {
+              // Met à jour la source locale; le filtrage (view personal) est géré plus haut via filteredSchedules
+              setLocalSchedules(next)
+            }}
+          />
         </div>
       )}
 

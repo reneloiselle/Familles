@@ -6,7 +6,7 @@ import { Calendar, CalendarDays, Users, CheckSquare, Plus, List } from 'lucide-r
 async function getUserFamily(supabase: any, userId: string) {
   const { data } = await supabase
     .from('family_members')
-    .select('family_id, families(name)')
+    .select('id, family_id, role, families(name)')
     .eq('user_id', userId)
     .single()
   
@@ -52,13 +52,9 @@ export default async function DashboardPage() {
     redirect('/auth/login')
   }
 
-  const familyMember = await supabase
-    .from('family_members')
-    .select('id, family_id, role, families(name)')
-    .eq('user_id', user.id)
-    .single()
+  const familyMember = await getUserFamily(supabase, user.id)
 
-  if (!familyMember.data) {
+  if (!familyMember) {
     return (
       <div className="max-w-2xl mx-auto text-center animate-in fade-in">
         <div className="card">
@@ -82,10 +78,10 @@ export default async function DashboardPage() {
     )
   }
 
-  const familyMemberId = familyMember.data.id
-  const familyId = familyMember.data.family_id
-  const isParent = familyMember.data.role === 'parent'
-  const familyName = (familyMember.data.families as any)?.name || ''
+  const familyMemberId = familyMember.id
+  const familyId = familyMember.family_id
+  const isParent = familyMember.role === 'parent'
+  const familyName = (familyMember.families as any)?.name || ''
 
   const [upcomingSchedules, pendingTasks] = await Promise.all([
     getUpcomingSchedules(supabase, familyMemberId),

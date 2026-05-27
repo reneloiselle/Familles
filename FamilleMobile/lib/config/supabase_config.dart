@@ -31,7 +31,7 @@ class GoogleMapsConfig {
 /// Options:
 /// - Développement local (simulateur iOS/Android): http://localhost:3000
 /// - Développement local (appareil physique): http://VOTRE_IP_LOCALE:3000 (ex: http://192.168.1.100:3000)
-/// - Production: https://votre-app.vercel.app ou votre URL de déploiement
+/// - Production: https://www.assistantfamilleai.ca
 /// 
 /// Pour trouver votre IP locale:
 /// - macOS/Linux: ifconfig | grep "inet " | grep -v 127.0.0.1
@@ -45,7 +45,7 @@ class ApiConfig {
   // 
   // Votre IP locale détectée: 10.0.0.122
   // Si vous utilisez un appareil physique, utilisez cette IP:
-  static const String baseUrl = 'http://10.0.0.97:3000';
+  static const String baseUrl = 'https://www.assistantfamilleai.ca';
   
   // Pour simulateur iOS (sur macOS):
   // static const String baseUrl = 'http://localhost:3000';
@@ -54,7 +54,7 @@ class ApiConfig {
   // static const String baseUrl = 'http://10.0.2.2:3000';
   
   // Pour production (déploiement):
-  // static const String baseUrl = 'https://votre-app.vercel.app';
+  // static const String baseUrl = 'https://www.assistantfamilleai.ca';
 }
 
 

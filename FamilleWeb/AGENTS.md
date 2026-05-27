@@ -22,9 +22,20 @@ Config locale : `.env.local` (voir `README.md`). Ne pas commiter les fichiers `.
 | `components/` | Composants React du dashboard |
 | `lib/supabase/` | Client/serveur Supabase, types DB |
 | `supabase/migrations/` | Migrations SQL (ordre numérique) |
+| `.agents/skills/` | Skills Syncfusion React pour les agents Cursor |
 | `middleware.ts` | Protection des routes |
 
 Routes API notables : `app/api/chat/`, `app/api/calendar/sync/`, `app/api/mcp/`.
+
+## Skills agents (`.agents/skills/`)
+
+Le dossier `.agents/skills/` regroupe **66 skills** Syncfusion React (un dossier par composant ou famille de composants).
+
+- **Point d'entrée** : lire `SKILL.md` dans le dossier du skill concerné (ex. `.agents/skills/syncfusion-react-scheduler/SKILL.md`).
+- **Détails** : le sous-dossier `references/` contient la doc API, les exemples et les patterns d'intégration.
+- **Skills transverses** : `syncfusion-react-common` (globalisation, animations, etc.), `syncfusion-react-themes`, `syncfusion-react-license`.
+
+Utiliser ces skills lorsque la tâche touche à Syncfusion (nouveau composant, migration UI, configuration licence/thème). Ne pas improviser sans consulter le skill correspondant.
 
 ## Conventions code
 

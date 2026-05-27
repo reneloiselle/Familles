@@ -28,6 +28,7 @@ export interface Database {
           created_at?: string
           created_by?: string
         }
+        Relationships: []
       }
       calendar_subscriptions: {
         Row: {
@@ -37,7 +38,7 @@ export interface Database {
           name: string
           color: string | null
           created_at: string
-          last_synced_at?: string | null
+          last_synced_at: string | null
         }
         Insert: {
           id?: string
@@ -57,6 +58,15 @@ export interface Database {
           created_at?: string
           last_synced_at?: string | null
         }
+        Relationships: [
+          {
+            foreignKeyName: 'calendar_subscriptions_family_member_id_fkey'
+            columns: ['family_member_id']
+            isOneToOne: false
+            referencedRelation: 'family_members'
+            referencedColumns: ['id']
+          },
+        ]
       }
       family_members: {
         Row: {
@@ -92,6 +102,15 @@ export interface Database {
           created_at?: string
           avatar_url?: string | null
         }
+        Relationships: [
+          {
+            foreignKeyName: 'family_members_family_id_fkey'
+            columns: ['family_id']
+            isOneToOne: false
+            referencedRelation: 'families'
+            referencedColumns: ['id']
+          },
+        ]
       }
       schedules: {
         Row: {
@@ -103,10 +122,11 @@ export interface Database {
           end_time: string
           date: string
           created_at: string
-          created_by: string
-          subscription_id?: string | null
-          external_uid?: string | null
-          last_synced_at?: string | null
+          created_by: string | null
+          subscription_id: string | null
+          external_uid: string | null
+          last_synced_at: string | null
+          location: string | null
         }
         Insert: {
           id?: string
@@ -117,10 +137,11 @@ export interface Database {
           end_time: string
           date: string
           created_at?: string
-          created_by: string
+          created_by?: string | null
           subscription_id?: string | null
           external_uid?: string | null
           last_synced_at?: string | null
+          location?: string | null
         }
         Update: {
           id?: string
@@ -131,11 +152,21 @@ export interface Database {
           end_time?: string
           date?: string
           created_at?: string
-          created_by?: string
+          created_by?: string | null
           subscription_id?: string | null
           external_uid?: string | null
           last_synced_at?: string | null
+          location?: string | null
         }
+        Relationships: [
+          {
+            foreignKeyName: 'schedules_family_member_id_fkey'
+            columns: ['family_member_id']
+            isOneToOne: false
+            referencedRelation: 'family_members'
+            referencedColumns: ['id']
+          },
+        ]
       }
       tasks: {
         Row: {
@@ -144,10 +175,11 @@ export interface Database {
           assigned_to: string | null
           title: string
           description: string | null
-          status: 'pending' | 'in_progress' | 'completed'
+          status: 'todo' | 'completed'
           due_date: string | null
           created_at: string
           created_by: string
+          priority: 'low' | 'medium' | 'high' | null
         }
         Insert: {
           id?: string
@@ -155,10 +187,11 @@ export interface Database {
           assigned_to?: string | null
           title: string
           description?: string | null
-          status?: 'pending' | 'in_progress' | 'completed'
+          status?: 'todo' | 'completed'
           due_date?: string | null
           created_at?: string
           created_by: string
+          priority?: 'low' | 'medium' | 'high' | null
         }
         Update: {
           id?: string
@@ -166,11 +199,28 @@ export interface Database {
           assigned_to?: string | null
           title?: string
           description?: string | null
-          status?: 'pending' | 'in_progress' | 'completed'
+          status?: 'todo' | 'completed'
           due_date?: string | null
           created_at?: string
           created_by?: string
+          priority?: 'low' | 'medium' | 'high' | null
         }
+        Relationships: [
+          {
+            foreignKeyName: 'tasks_assigned_to_fkey'
+            columns: ['assigned_to']
+            isOneToOne: false
+            referencedRelation: 'family_members'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'tasks_family_id_fkey'
+            columns: ['family_id']
+            isOneToOne: false
+            referencedRelation: 'families'
+            referencedColumns: ['id']
+          },
+        ]
       }
       shared_lists: {
         Row: {
@@ -203,6 +253,15 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: 'shared_lists_family_id_fkey'
+            columns: ['family_id']
+            isOneToOne: false
+            referencedRelation: 'families'
+            referencedColumns: ['id']
+          },
+        ]
       }
       shared_list_items: {
         Row: {
@@ -244,6 +303,15 @@ export interface Database {
           checked_at?: string | null
           checked_by?: string | null
         }
+        Relationships: [
+          {
+            foreignKeyName: 'shared_list_items_list_id_fkey'
+            columns: ['list_id']
+            isOneToOne: false
+            referencedRelation: 'shared_lists'
+            referencedColumns: ['id']
+          },
+        ]
       }
       invitations: {
         Row: {
@@ -285,6 +353,22 @@ export interface Database {
           created_at?: string
           accepted_at?: string | null
         }
+        Relationships: [
+          {
+            foreignKeyName: 'invitations_family_id_fkey'
+            columns: ['family_id']
+            isOneToOne: false
+            referencedRelation: 'families'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'invitations_family_member_id_fkey'
+            columns: ['family_member_id']
+            isOneToOne: false
+            referencedRelation: 'family_members'
+            referencedColumns: ['id']
+          },
+        ]
       }
     }
     Views: {
@@ -337,7 +421,7 @@ export interface Database {
     }
     Enums: {
       member_role: 'parent' | 'child'
-      task_status: 'pending' | 'in_progress' | 'completed'
+      task_status: 'todo' | 'completed'
     }
   }
 }
