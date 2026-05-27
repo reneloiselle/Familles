@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 import { useAuth } from '@/app/providers'
 import { createClient } from '@/lib/supabase/client'
+import { isMissingColumnError } from '@/lib/supabase/columnErrors'
 import { Calendar, CalendarDays, Users, CheckSquare, LogOut, Home, List, Menu, X, User } from 'lucide-react'
 
 function getUserDisplayName(user: SupabaseUser, memberName?: string | null) {
@@ -22,14 +23,33 @@ function getUserDisplayName(user: SupabaseUser, memberName?: string | null) {
 function UserIdentity({
   user,
   memberName,
+  memberAvatar,
+  memberColor,
   compact = false,
 }: {
   user: SupabaseUser
   memberName?: string | null
+  memberAvatar?: string | null
+  memberColor?: string | null
   compact?: boolean
 }) {
   const displayName = getUserDisplayName(user, memberName)
   const initial = displayName.charAt(0).toUpperCase()
+  const avatar = memberAvatar || null
+  const color = memberColor || '#6366f1'
+
+  const avatarNode = avatar ? (
+    <div
+      className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm text-lg"
+      style={{ backgroundColor: color }}
+    >
+      {avatar}
+    </div>
+  ) : (
+    <div className="w-9 h-9 bg-gradient-to-br from-primary-500 to-primary-600 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm">
+      <span className="text-sm font-semibold text-white">{initial}</span>
+    </div>
+  )
 
   if (compact) {
     return (
@@ -37,9 +57,7 @@ function UserIdentity({
         className="flex items-center gap-2 min-w-0 max-w-[120px] sm:max-w-[140px]"
         title={user.email ?? displayName}
       >
-        <div className="w-9 h-9 bg-gradient-to-br from-primary-500 to-primary-600 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm">
-          <span className="text-sm font-semibold text-white">{initial}</span>
-        </div>
+        {avatarNode}
         <span className="text-sm font-medium text-gray-800 truncate">
           {displayName}
         </span>
@@ -49,9 +67,7 @@ function UserIdentity({
 
   return (
     <div className="flex items-center gap-2.5 min-w-0 max-w-[200px] lg:max-w-[240px] border-l border-gray-200 pl-4">
-      <div className="w-9 h-9 bg-gradient-to-br from-primary-500 to-primary-600 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm">
-        <span className="text-sm font-semibold text-white">{initial}</span>
-      </div>
+      {avatarNode}
       <div className="min-w-0">
         <p className="text-sm font-medium text-gray-900 truncate">{displayName}</p>
         {user.email && (
@@ -69,6 +85,8 @@ export function Navbar() {
   const supabase = createClient()
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [memberName, setMemberName] = useState<string | null>(null)
+  const [memberAvatar, setMemberAvatar] = useState<string | null>(null)
+  const [memberColor, setMemberColor] = useState<string | null>(null)
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -79,20 +97,31 @@ export function Navbar() {
   useEffect(() => {
     if (!user) {
       setMemberName(null)
+      setMemberAvatar(null)
+      setMemberColor(null)
       return
     }
     let cancelled = false
-    const loadMemberName = async () => {
-      const { data } = await supabase
+    const loadMemberProfile = async () => {
+      let { data, error } = await supabase
         .from('family_members')
-        .select('name')
+        .select('name, avatar_url, color')
         .eq('user_id', user.id)
         .maybeSingle()
+      if (error && isMissingColumnError(error)) {
+        ;({ data, error } = await supabase
+          .from('family_members')
+          .select('name, avatar_url')
+          .eq('user_id', user.id)
+          .maybeSingle())
+      }
       if (!cancelled) {
         setMemberName(data?.name ?? null)
+        setMemberAvatar(data?.avatar_url ?? null)
+        setMemberColor('color' in (data || {}) ? (data as { color?: string | null }).color ?? null : null)
       }
     }
-    void loadMemberName()
+    void loadMemberProfile()
     return () => {
       cancelled = true
     }
@@ -190,7 +219,7 @@ export function Navbar() {
                 <span className="hidden lg:inline">Accueil</span>
               </Link>
               
-              <UserIdentity user={user} memberName={memberName} />
+              <UserIdentity user={user} memberName={memberName} memberAvatar={memberAvatar} memberColor={memberColor} />
 
               {/* Déconnexion */}
               <button
@@ -204,7 +233,7 @@ export function Navbar() {
 
             {/* Identification utilisateur (mobile, barre du haut) */}
             <div className="md:hidden flex-shrink-0">
-              <UserIdentity user={user} memberName={memberName} compact />
+              <UserIdentity user={user} memberName={memberName} memberAvatar={memberAvatar} memberColor={memberColor} compact />
             </div>
           </div>
         </div>
@@ -231,8 +260,11 @@ export function Navbar() {
               {/* Header du sidebar */}
               <div className="flex items-center justify-between p-4 border-b border-gray-100 bg-gradient-to-r from-primary-50/50 to-white">
                 <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div className="w-12 h-12 bg-gradient-to-br from-primary-500 to-primary-600 rounded-full flex items-center justify-center flex-shrink-0 shadow-md">
-                    <User className="w-6 h-6 text-white" />
+                  <div
+                    className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 shadow-md text-2xl"
+                    style={{ backgroundColor: memberColor || '#6366f1' }}
+                  >
+                    {memberAvatar || <User className="w-6 h-6 text-white" />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-gray-900 truncate text-base">

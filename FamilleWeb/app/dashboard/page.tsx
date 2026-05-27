@@ -2,11 +2,12 @@ import { createServerClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Calendar, CalendarDays, Users, CheckSquare, Plus, List } from 'lucide-react'
+import { MemberAvatar } from '@/components/MemberAvatar'
 
 async function getUserFamily(supabase: any, userId: string) {
   const { data } = await supabase
     .from('family_members')
-    .select('id, family_id, role, families(name)')
+    .select('id, family_id, role, avatar_url, name, families(name)')
     .eq('user_id', userId)
     .single()
   
@@ -29,7 +30,7 @@ async function getUpcomingSchedules(supabase: any, familyMemberId: string) {
 async function getPendingTasks(supabase: any, familyId: string, familyMemberId: string, userId: string) {
   const { data } = await supabase
     .from('tasks')
-    .select('*, family_members(id, user_id)')
+    .select('*, family_members(id, user_id, avatar_url, name)')
     .eq('family_id', familyId)
     .eq('status', 'todo')
     .or(`created_by.eq.${userId},assigned_to.eq.${familyMemberId}`)
@@ -177,11 +178,18 @@ export default async function DashboardPage() {
           ) : (
             <div className="space-y-3">
               {upcomingSchedules.map((schedule: any) => (
-                <div key={schedule.id} className="border-l-4 border-primary-500 pl-4 py-2 rounded-r-lg bg-primary-50/50 hover:bg-primary-50 transition-colors">
-                  <p className="font-medium text-sm sm:text-base">{schedule.title}</p>
-                  <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                    {new Date(schedule.date).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })} • {schedule.start_time} - {schedule.end_time}
-                  </p>
+                <div
+                  key={schedule.id}
+                  className="border-l-4 pl-4 py-2 rounded-r-lg bg-gray-50/50 hover:bg-gray-50 transition-colors flex items-start gap-2"
+                  style={{ borderLeftColor: familyMember.color || '#3b82f6' }}
+                >
+                  <MemberAvatar member={familyMember} size="sm" />
+                  <div>
+                    <p className="font-medium text-sm sm:text-base">{schedule.title}</p>
+                    <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                      {new Date(schedule.date).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })} • {schedule.start_time} - {schedule.end_time}
+                    </p>
+                  </div>
                 </div>
               ))}
             </div>
@@ -204,11 +212,20 @@ export default async function DashboardPage() {
             <div className="space-y-3">
               {pendingTasks.map((task: any) => (
                 <div key={task.id} className="flex items-start sm:items-center justify-between gap-3 border-b border-gray-100 pb-3 last:border-0 last:pb-0">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm sm:text-base truncate">{task.title}</p>
-                    <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                      {task.due_date ? `Échéance: ${new Date(task.due_date).toLocaleDateString('fr-FR')}` : 'Sans échéance'}
-                    </p>
+                  <div className="flex items-start gap-2 flex-1 min-w-0">
+                    {task.family_members && (
+                      <MemberAvatar
+                        member={task.family_members}
+                        memberIds={task.family_members ? [task.family_members.id] : []}
+                        size="sm"
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm sm:text-base truncate">{task.title}</p>
+                      <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                        {task.due_date ? `Échéance: ${new Date(task.due_date).toLocaleDateString('fr-FR')}` : 'Sans échéance'}
+                      </p>
+                    </div>
                   </div>
                   <span className={`px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap flex-shrink-0 ${
                     task.status === 'completed' ? 'bg-green-100 text-green-700' :

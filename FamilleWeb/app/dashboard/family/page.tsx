@@ -13,11 +13,15 @@ async function getUserFamily(supabase: any, userId: string) {
 }
 
 async function getFamilyMembers(supabase: any, familyId: string) {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('family_members')
     .select('id, user_id, role, family_id, created_at, email, name, invitation_status, avatar_url')
     .eq('family_id', familyId)
 
+  if (error) {
+    console.error('Erreur chargement membres:', error.message)
+    return []
+  }
   if (!data) return []
 
   // Fetch emails for members with accounts using the SQL function

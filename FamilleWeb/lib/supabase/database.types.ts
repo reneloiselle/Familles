@@ -79,6 +79,7 @@ export interface Database {
           invitation_status: 'pending' | 'accepted' | 'declined' | null
           created_at: string
           avatar_url: string | null
+          color: string | null
         }
         Insert: {
           id?: string
@@ -90,6 +91,7 @@ export interface Database {
           invitation_status?: 'pending' | 'accepted' | 'declined' | null
           created_at?: string
           avatar_url?: string | null
+          color?: string | null
         }
         Update: {
           id?: string
@@ -101,6 +103,7 @@ export interface Database {
           invitation_status?: 'pending' | 'accepted' | 'declined' | null
           created_at?: string
           avatar_url?: string | null
+          color?: string | null
         }
         Relationships: [
           {

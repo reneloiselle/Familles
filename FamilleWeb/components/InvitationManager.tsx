@@ -3,8 +3,11 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { Mail, Send, X, CheckCircle2, Clock } from 'lucide-react'
+import { Mail, Send, CheckCircle2, Clock } from 'lucide-react'
 import { User } from '@supabase/supabase-js'
+import { EMOJI_OPTIONS } from '@/lib/family/memberDisplay'
+import { getDefaultColorForNewMember, MEMBER_COLOR_HEX } from '@/lib/schedule/memberColors'
+import { isMissingColumnError } from '@/lib/supabase/columnErrors'
 
 interface Invitation {
   id: string
@@ -20,12 +23,15 @@ interface Invitation {
 interface InvitationManagerProps {
   user: User
   familyId: string
+  memberCount?: number
 }
 
-export function InvitationManager({ user, familyId }: InvitationManagerProps) {
+export function InvitationManager({ user, familyId, memberCount = 0 }: InvitationManagerProps) {
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState<'parent' | 'child'>('child')
   const [inviteName, setInviteName] = useState('')
+  const [inviteAvatar, setInviteAvatar] = useState('👤')
+  const [inviteColor, setInviteColor] = useState(() => getDefaultColorForNewMember(memberCount))
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [invitations, setInvitations] = useState<Invitation[]>([])
@@ -71,17 +77,28 @@ export function InvitationManager({ user, familyId }: InvitationManagerProps) {
       if (inviteName) {
         memberData.name = inviteName
       }
+      memberData.avatar_url = inviteAvatar
+      memberData.color = inviteColor
 
       // If user exists, link them
       if (existingUser) {
         memberData.user_id = existingUser
       }
 
-      const { data: member, error: memberError } = await supabase
+      let { data: member, error: memberError } = await supabase
         .from('family_members')
         .insert(memberData)
         .select()
         .single()
+
+      if (memberError && isMissingColumnError(memberError)) {
+        const { color: _color, ...withoutColor } = memberData
+        ;({ data: member, error: memberError } = await supabase
+          .from('family_members')
+          .insert(withoutColor)
+          .select()
+          .single())
+      }
 
       if (memberError) {
         // Check if member already exists
@@ -91,6 +108,10 @@ export function InvitationManager({ user, familyId }: InvitationManagerProps) {
           return
         }
         throw memberError
+      }
+
+      if (!member) {
+        throw new Error('Erreur lors de la création du membre')
       }
 
       // Create invitation
@@ -115,6 +136,8 @@ export function InvitationManager({ user, familyId }: InvitationManagerProps) {
       setInviteEmail('')
       setInviteName('')
       setInviteRole('child')
+      setInviteAvatar('👤')
+      setInviteColor(getDefaultColorForNewMember(memberCount + 1))
       setShowInviteForm(false)
       await loadInvitations()
     } catch (err: any) {
@@ -234,6 +257,41 @@ export function InvitationManager({ user, familyId }: InvitationManagerProps) {
                 <option value="child">Enfant</option>
                 <option value="parent">Parent</option>
               </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Emoji</label>
+              <div className="grid grid-cols-8 sm:grid-cols-10 gap-1 max-h-28 overflow-y-auto">
+                {EMOJI_OPTIONS.slice(0, 24).map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => setInviteAvatar(emoji)}
+                    className={`w-9 h-9 flex items-center justify-center hover:bg-gray-100 rounded text-lg ${
+                      inviteAvatar === emoji ? 'ring-2 ring-primary-500 bg-primary-50' : ''
+                    }`}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Couleur</label>
+              <div className="flex flex-wrap gap-2">
+                {MEMBER_COLOR_HEX.map((hex) => (
+                  <button
+                    key={hex}
+                    type="button"
+                    onClick={() => setInviteColor(hex)}
+                    className={`w-8 h-8 rounded-full border-2 ${
+                      inviteColor === hex ? 'border-gray-800 scale-110' : 'border-transparent'
+                    }`}
+                    style={{ backgroundColor: hex }}
+                  />
+                ))}
+              </div>
             </div>
 
             <div className="flex gap-2">

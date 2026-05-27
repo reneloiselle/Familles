@@ -3,8 +3,10 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { Plus, CheckCircle2, Circle, Clock, Trash2, Edit2, Save, X } from 'lucide-react'
+import { Plus, CheckCircle2, Circle, Trash2, Edit2, Save, X } from 'lucide-react'
 import { User } from '@supabase/supabase-js'
+import { MemberAvatar } from './MemberAvatar'
+import { getMemberDisplayName as getSharedMemberDisplayName } from '@/lib/family/memberDisplay'
 
 interface Task {
   id: string
@@ -22,6 +24,7 @@ interface Task {
     user_id: string
     role: string
     avatar_url?: string | null
+    color?: string | null
   }
 }
 
@@ -32,6 +35,7 @@ interface FamilyMember {
   avatar_url?: string | null
   name?: string | null
   email?: string | null
+  color?: string | null
 }
 
 interface TaskManagementProps {
@@ -71,6 +75,20 @@ export function TaskManagement({
   const [error, setError] = useState('')
   const router = useRouter()
   const supabase = createClient()
+  const memberIds = familyMembers.map((m) => m.id)
+
+  const getMemberDisplayName = (member: FamilyMember) =>
+    getSharedMemberDisplayName(member, user.id)
+
+  const getAssignedMember = (memberId: string | null) =>
+    memberId ? familyMembers.find((m) => m.id === memberId) : undefined
+
+  const getMemberName = (memberId: string | null) => {
+    if (!memberId) return 'Non assigné'
+    const member = getAssignedMember(memberId)
+    if (!member) return 'Membre inconnu'
+    return getMemberDisplayName(member)
+  }
 
   // Empêcher le scroll du body quand une modale est ouverte
   useEffect(() => {
@@ -117,6 +135,7 @@ export function TaskManagement({
                   user_id: member.user_id,
                   role: member.role,
                   avatar_url: member.avatar_url || null,
+                  color: member.color || null,
                 }
               }
             }
@@ -155,6 +174,7 @@ export function TaskManagement({
                   user_id: member.user_id,
                   role: member.role,
                   avatar_url: member.avatar_url || null,
+                  color: member.color || null,
                 }
               }
             }
@@ -374,25 +394,6 @@ export function TaskManagement({
     }
   }
 
-  const getMemberName = (memberId: string | null) => {
-    if (!memberId) return 'Non assigné'
-    const member = familyMembers.find(m => m.id === memberId)
-    if (!member) return 'Membre inconnu'
-    if (member.user_id === user.id) return 'Vous'
-    // Utiliser name, puis email, puis ID
-    return member.name || member.email || `Membre ${member.id.slice(0, 8)}`
-  }
-
-  const getMemberDisplayName = (member: FamilyMember) => {
-    if (member.user_id === user.id) return 'Vous'
-    return member.name || member.email || `Membre ${member.id.slice(0, 8)}`
-  }
-
-  const getMemberAvatar = (memberId: string | null) => {
-    if (!memberId) return null
-    const member = familyMembers.find(m => m.id === memberId)
-    return member?.avatar_url || '👤'
-  }
 
   const filteredTasks = statusFilter === 'all'
     ? localTasks
@@ -854,9 +855,17 @@ export function TaskManagement({
                         {getPriorityLabel(task.priority)}
                       </strong>
                     </span>
-                    <span>
-                      Assigné à: <strong>
-                        {task.assigned_to && <span className="mr-1 text-lg">{getMemberAvatar(task.assigned_to)}</span>}
+                    <span className="flex items-center gap-2">
+                      Assigné à:{' '}
+                      <strong className="flex items-center gap-1.5">
+                        {task.assigned_to && getAssignedMember(task.assigned_to) && (
+                          <MemberAvatar
+                            member={getAssignedMember(task.assigned_to)!}
+                            currentUserId={user.id}
+                            memberIds={memberIds}
+                            size="sm"
+                          />
+                        )}
                         {getMemberName(task.assigned_to)}
                       </strong>
                     </span>

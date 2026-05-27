@@ -19,6 +19,8 @@ import {
   formatMonthYear,
   parseLocalDate,
 } from '@/lib/schedule/dateUtils'
+import { MemberAvatar } from './MemberAvatar'
+import { getMemberDisplayName, getMemberColor } from '@/lib/family/memberDisplay'
 
 interface Schedule {
   id: string
@@ -46,6 +48,7 @@ interface FamilyMember {
   email?: string | null
   name?: string | null
   avatar_url?: string | null
+  color?: string | null
 }
 
 interface ScheduleManagementProps {
@@ -128,6 +131,21 @@ export function ScheduleManagement({
   const [error, setError] = useState('')
   const router = useRouter()
   const supabase = createClient()
+  const memberIds = familyMembers.map((m) => m.id)
+
+  const getMemberById = (memberId: string) => familyMembers.find((m) => m.id === memberId)
+
+  const getMemberName = (memberId: string) => {
+    const member = getMemberById(memberId)
+    if (!member) return 'Membre inconnu'
+    return getMemberDisplayName(member, user.id)
+  }
+
+  const getScheduleMemberColor = (memberId: string) => {
+    const member = getMemberById(memberId)
+    if (!member) return '#3b82f6'
+    return getMemberColor(member, memberIds)
+  }
 
   // Empêcher le scroll du body quand une modale est ouverte
   useEffect(() => {
@@ -420,20 +438,6 @@ export function ScheduleManagement({
     return acc
   }, {})
 
-  const getMemberName = (memberId: string) => {
-    const member = familyMembers.find(m => m.id === memberId)
-    if (!member) return 'Membre inconnu'
-    if (member.user_id === user.id) return 'Vous'
-    if (member.name) return member.name
-    if (member.email) return member.email
-    return `Membre ${member.id.slice(0, 8)}`
-  }
-
-  const getMemberAvatar = (memberId: string) => {
-    const member = familyMembers.find(m => m.id === memberId)
-    return member?.avatar_url || '👤'
-  }
-
   // Fonction pour vérifier si deux horaires se chevauchent
   const schedulesOverlap = (schedule1: Schedule, schedule2: Schedule): boolean => {
     if (schedule1.date !== schedule2.date) return false
@@ -584,8 +588,8 @@ export function ScheduleManagement({
             {familyMembers.map(member => (
               <div key={member.id}>
                 <h4 className="font-medium mb-2 flex items-center gap-2">
-                  <span className="text-xl">{member.avatar_url || '👤'}</span>
-                  {member.name || member.email || 'Membre'}
+                  <MemberAvatar member={member} currentUserId={user.id} memberIds={memberIds} size="sm" />
+                  {getMemberDisplayName(member, user.id)}
                 </h4>
                 <CalendarSubscriptionManager
                   familyMemberId={member.id}
@@ -1012,6 +1016,8 @@ export function ScheduleManagement({
                         const backToBackIds = getBackToBackScheduleIds(schedule, schedules)
                       const hasBackToBack = backToBackIds.length > 0 && !hasOverlap
 
+                      const memberColor = getScheduleMemberColor(schedule.family_member_id)
+
                       return (
                         <div
                           key={schedule.id}
@@ -1022,9 +1028,15 @@ export function ScheduleManagement({
                                 ? 'bg-yellow-50 border-yellow-400'
                                 : isExternal 
                                   ? 'bg-gray-50' 
-                                  : 'bg-gray-50 border-primary-500'
+                                  : 'bg-gray-50'
                           }`}
-                          style={isExternal && !hasOverlap && !hasBackToBack ? { borderLeftColor: color || '#3B82F6' } : {}}
+                          style={
+                            hasOverlap || hasBackToBack
+                              ? {}
+                              : isExternal
+                                ? { borderLeftColor: color || '#3B82F6' }
+                                : { borderLeftColor: memberColor }
+                          }
                         >
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
@@ -1045,7 +1057,14 @@ export function ScheduleManagement({
                                 )}
                               </h4>
                               <p className="text-sm text-gray-600 mt-1 flex items-center gap-2">
-                                <span className="text-lg">{getMemberAvatar(schedule.family_member_id)}</span>
+                                {getMemberById(schedule.family_member_id) && (
+                                  <MemberAvatar
+                                    member={getMemberById(schedule.family_member_id)!}
+                                    currentUserId={user.id}
+                                    memberIds={memberIds}
+                                    size="sm"
+                                  />
+                                )}
                                 {getMemberName(schedule.family_member_id)}
                               </p>
                               <div className="flex items-center gap-4 mt-2 text-sm text-gray-600">
@@ -1276,17 +1295,15 @@ export function ScheduleManagement({
                   return (
                     <tr key={member.id} className="hover:bg-gray-50">
                       <td className="border border-gray-300 bg-gray-50 p-3 sticky left-0 z-10 font-medium">
-                        {member.user_id === user.id ? (
-                          <span className="font-semibold">Vous</span>
-                        ) : (
+                        <div className="flex items-center gap-2">
+                          <MemberAvatar member={member} currentUserId={user.id} memberIds={memberIds} size="sm" />
                           <span>
-                            {member.name || member.email || `Membre ${member.id.slice(0, 8)}`}
+                            {getMemberDisplayName(member, user.id)}
+                            {member.role === 'parent' && (
+                              <span className="ml-1 text-xs text-gray-500">(Parent)</span>
+                            )}
                           </span>
-                        )}
-                        <span className="ml-2 text-xl">{member.avatar_url || '👤'}</span>
-                        {member.role === 'parent' && (
-                          <span className="ml-2 text-xs text-gray-500">(Parent)</span>
-                        )}
+                        </div>
                       </td>
                       {weekDays.map((day) => {
                         const daySchedules = [...(schedulesByDay[day] || [])].sort((a, b) =>
@@ -1314,6 +1331,8 @@ export function ScheduleManagement({
                                 )
                                 const hasBackToBack = backToBackIds.length > 0 && !hasOverlap
 
+                                const memberColor = getScheduleMemberColor(schedule.family_member_id)
+
                                 return (
                                   <div
                                     key={schedule.id}
@@ -1324,12 +1343,17 @@ export function ScheduleManagement({
                                           ? 'bg-yellow-500 text-white border-yellow-600'
                                           : isExternal
                                             ? 'text-white border-transparent'
-                                            : 'bg-primary-500 text-white border-primary-700 hover:bg-primary-600'
+                                            : 'text-white'
                                     }`}
                                     style={
-                                      isExternal && !hasOverlap && !hasBackToBack
-                                        ? { backgroundColor: color || '#3B82F6' }
-                                        : {}
+                                      hasOverlap || hasBackToBack
+                                        ? {}
+                                        : isExternal
+                                          ? { backgroundColor: color || '#3B82F6' }
+                                          : {
+                                              backgroundColor: memberColor,
+                                              borderColor: memberColor,
+                                            }
                                     }
                                     title={`${schedule.title} - ${schedule.start_time} à ${schedule.end_time}${schedule.location ? ` - ${schedule.location}` : ''}${hasOverlap ? " (Conflit d'horaire)" : hasBackToBack ? ' (Possibilité de problème de transport)' : ''}`}
                                   >
@@ -1405,7 +1429,7 @@ export function ScheduleManagement({
           <div className="flex flex-wrap gap-3 px-4 py-3 border-b border-gray-100 bg-gray-50 text-sm">
             {familyMembers.map((member) => (
               <div key={member.id} className="flex items-center gap-1.5">
-                <span className="text-base">{member.avatar_url || '👤'}</span>
+                <MemberAvatar member={member} currentUserId={user.id} memberIds={memberIds} size="sm" />
                 <span className="font-medium">
                   {member.user_id === user.id
                     ? 'Vous'
@@ -1461,20 +1485,34 @@ export function ScheduleManagement({
                               ? getSubscriptionColor(schedule.subscription_id)
                               : undefined
 
+                            const memberColor = getScheduleMemberColor(schedule.family_member_id)
+
                             return (
                               <div
                                 key={schedule.id}
                                 className={`rounded px-1 py-0.5 text-[10px] sm:text-xs leading-tight truncate border ${
                                   isExternal
                                     ? 'text-white border-transparent'
-                                    : 'bg-primary-500 text-white border-primary-600'
+                                    : 'text-white'
                                 }`}
                                 style={
-                                  isExternal ? { backgroundColor: color || '#3B82F6' } : undefined
+                                  isExternal
+                                    ? { backgroundColor: color || '#3B82F6' }
+                                    : { backgroundColor: memberColor, borderColor: memberColor }
                                 }
                                 title={`${getMemberName(schedule.family_member_id)} — ${schedule.title} (${formatScheduleTime(schedule.start_time)} - ${formatScheduleTime(schedule.end_time)})`}
                               >
-                                <span className="mr-0.5">{getMemberAvatar(schedule.family_member_id)}</span>
+                                {getMemberById(schedule.family_member_id) && (
+                                  <span className="mr-0.5 inline-flex align-middle">
+                                    <MemberAvatar
+                                      member={getMemberById(schedule.family_member_id)!}
+                                      currentUserId={user.id}
+                                      memberIds={memberIds}
+                                      size="sm"
+                                      className="!w-4 !h-4 !text-xs"
+                                    />
+                                  </span>
+                                )}
                                 <span className="font-medium">{formatScheduleTime(schedule.start_time)}</span>{' '}
                                 {schedule.title}
                               </div>

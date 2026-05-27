@@ -33,7 +33,8 @@ import {
   getEventHeightPx,
   computeDayEventLayouts,
 } from '@/lib/schedule/scheduleLayout'
-import { getMemberColorClasses } from '@/lib/schedule/memberColors'
+import { getMemberColor, getMemberDisplayName } from '@/lib/family/memberDisplay'
+import { MemberAvatar } from './MemberAvatar'
 
 interface Schedule {
   id: string
@@ -52,6 +53,7 @@ interface Schedule {
     email?: string | null
     name?: string | null
     avatar_url?: string | null
+    color?: string | null
   }
 }
 
@@ -62,6 +64,7 @@ interface FamilyMember {
   email?: string | null
   name?: string | null
   avatar_url?: string | null
+  color?: string | null
 }
 
 interface Subscription {
@@ -187,11 +190,7 @@ export function FamilyPlanningWeekView({
   const getMemberLabel = (memberId: string) => {
     const member = familyMembers.find((m) => m.id === memberId)
     if (!member) return 'Membre inconnu'
-    if (member.user_id === user.id) return 'Vous'
-    if (member.name) return member.name
-    if (member.email) return member.email
-    const roleLabel = member.role === 'parent' ? 'Parent' : 'Enfant'
-    return `${roleLabel} (${member.id.slice(0, 8)})`
+    return getMemberDisplayName(member, user.id)
   }
 
   const getSubscriptionColor = (subId: string | null | undefined) => {
@@ -632,7 +631,7 @@ export function FamilyPlanningWeekView({
             const memberSchedules = localSchedules.filter(
               (s) => s.family_member_id === member.id
             )
-            const memberColors = getMemberColorClasses(member.id, memberIds)
+            const memberColor = getMemberColor(member, memberIds)
             const isLastMember = memberIndex === familyMembers.length - 1
 
             return (
@@ -643,10 +642,12 @@ export function FamilyPlanningWeekView({
               >
                 {/* Bandeau membre */}
                 <div
-                  className={`grid grid-cols-[56px_repeat(7,1fr)] border-b border-gray-200 ${memberColors.bg} ${memberColors.text}`}
+                  className="grid grid-cols-[56px_repeat(7,1fr)] border-b border-gray-200 text-white"
+                  style={{ backgroundColor: memberColor }}
                 >
                   <div
-                    className={`sticky left-0 z-20 flex items-center gap-2 px-2 py-2 border-r border-white/20 ${memberColors.bg}`}
+                    className="sticky left-0 z-20 flex items-center gap-2 px-2 py-2 border-r border-white/20"
+                    style={{ backgroundColor: memberColor }}
                   >
                     <span className="text-lg leading-none" aria-hidden>
                       {member.avatar_url || '👤'}
@@ -716,13 +717,11 @@ export function FamilyPlanningWeekView({
                           const subColor = getSubscriptionColor(schedule.subscription_id)
 
                           let className =
-                            'absolute rounded px-1 py-0.5 text-xs overflow-hidden cursor-pointer border-l-4 shadow-sm z-10 '
+                            'absolute rounded px-1 py-0.5 text-xs overflow-hidden cursor-pointer border-l-4 shadow-sm z-10 text-white '
                           if (layout.hasConflict) {
-                            className += 'bg-red-500 text-white border-red-700'
+                            className += 'bg-red-500 border-red-700'
                           } else if (isExternal) {
-                            className += 'text-white border-2'
-                          } else {
-                            className += `${memberColors.bg} ${memberColors.text} ${memberColors.border}`
+                            className += 'border-2'
                           }
 
                           return (
@@ -735,12 +734,17 @@ export function FamilyPlanningWeekView({
                                 height,
                                 left: `calc(${leftPct}% + 2px)`,
                                 width: `calc(${widthPct}% - 4px)`,
-                                ...(isExternal && !layout.hasConflict
-                                  ? {
-                                      backgroundColor: subColor,
-                                      borderColor: subColor,
-                                    }
-                                  : {}),
+                                ...(layout.hasConflict
+                                  ? {}
+                                  : isExternal
+                                    ? {
+                                        backgroundColor: subColor,
+                                        borderColor: subColor,
+                                      }
+                                    : {
+                                        backgroundColor: memberColor,
+                                        borderColor: memberColor,
+                                      }),
                               }}
                               onClick={(e) => {
                                 e.stopPropagation()
