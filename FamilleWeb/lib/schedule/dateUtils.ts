@@ -47,3 +47,67 @@ export function addDays(dateStr: string, days: number): string {
   d.setDate(d.getDate() + days)
   return getLocalDateString(d)
 }
+
+/** Plage de N jours consécutifs à partir de startDateStr (inclus). */
+export function getConsecutiveDayRange(startDateStr: string, dayCount: number): { start: string; end: string } {
+  return {
+    start: startDateStr,
+    end: addDays(startDateStr, Math.max(0, dayCount - 1)),
+  }
+}
+
+/** Liste des dates YYYY-MM-DD sur N jours consécutifs à partir de startDateStr. */
+export function getConsecutiveDays(startDateStr: string, dayCount: number): string[] {
+  const days: string[] = []
+  for (let i = 0; i < dayCount; i++) {
+    days.push(addDays(startDateStr, i))
+  }
+  return days
+}
+
+/** Premier jour du mois contenant dateStr */
+export function getMonthStart(dateStr: string): string {
+  const d = parseLocalDate(dateStr)
+  return getLocalDateString(new Date(d.getFullYear(), d.getMonth(), 1))
+}
+
+/** Dernier jour du mois contenant dateStr */
+export function getMonthEnd(dateStr: string): string {
+  const d = parseLocalDate(dateStr)
+  return getLocalDateString(new Date(d.getFullYear(), d.getMonth() + 1, 0))
+}
+
+/** Ajoute ou retire des mois à une date YYYY-MM-DD */
+export function addMonths(dateStr: string, months: number): string {
+  const d = parseLocalDate(dateStr)
+  d.setMonth(d.getMonth() + months)
+  return getLocalDateString(d)
+}
+
+/** Plage lun→dim couvrant toute la grille du mois (jours hors mois inclus) */
+export function getMonthGridRange(dateStr: string): { start: string; end: string } {
+  const monthStart = getMonthStart(dateStr)
+  const monthEnd = getMonthEnd(dateStr)
+  return {
+    start: getWeekStart(monthStart),
+    end: getWeekEnd(getWeekStart(monthEnd)),
+  }
+}
+
+/** Dates de la grille calendrier (lun→dim, semaines complètes) pour le mois de dateStr */
+export function getMonthGridDays(dateStr: string): string[] {
+  const { start, end } = getMonthGridRange(dateStr)
+  const days: string[] = []
+  let current = start
+  while (current <= end) {
+    days.push(current)
+    current = addDays(current, 1)
+  }
+  return days
+}
+
+/** Libellé mois + année en français */
+export function formatMonthYear(dateStr: string): string {
+  const d = parseLocalDate(getMonthStart(dateStr))
+  return d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+}

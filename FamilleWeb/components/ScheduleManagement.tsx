@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import dynamic from 'next/dynamic'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { Plus, Calendar as CalendarIcon, Clock, Settings, MapPin, Map, X, Edit2, Trash2, ChevronLeft, ChevronRight, User as UserIcon } from 'lucide-react'
@@ -11,22 +10,15 @@ import { LocationPicker } from './LocationPicker'
 import { LocationViewer } from './LocationViewer'
 import {
   getLocalDateString,
-  getWeekStart,
-  getWeekEnd,
-  getWeekDays,
+  getConsecutiveDayRange,
+  getConsecutiveDays,
+  getMonthGridDays,
+  getMonthGridRange,
+  getMonthStart,
+  addMonths,
+  formatMonthYear,
   parseLocalDate,
 } from '@/lib/schedule/dateUtils'
-
-const ScheduleResourceScheduler = dynamic(
-  () =>
-    import('./ScheduleResourceScheduler').then((mod) => mod.ScheduleResourceScheduler),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="card text-center py-12 text-gray-500">Chargement du calendrier...</div>
-    ),
-  }
-)
 
 interface Schedule {
   id: string
@@ -71,6 +63,28 @@ interface Subscription {
   url: string
   name: string
   color: string | null
+}
+
+function getViewDateRange(
+  view: string,
+  selectedDate: string
+): { start: string; end: string } | undefined {
+  if (view === 'family') {
+    const today = getLocalDateString()
+    return getConsecutiveDayRange(today, 7)
+  }
+  if (view === 'week') {
+    const today = getLocalDateString()
+    return getConsecutiveDayRange(today, 7)
+  }
+  if (view === 'month') {
+    return getMonthGridRange(selectedDate)
+  }
+  return undefined
+}
+
+function formatScheduleTime(time: string): string {
+  return time.slice(0, 5)
 }
 
 export function ScheduleManagement({
@@ -158,9 +172,13 @@ export function ScheduleManagement({
         endDate.setDate(endDate.getDate() + 7)
         const endDateStr = getLocalDateString(endDate)
         query = query.gte('date', today).lte('date', endDateStr)
-      } else if (view === 'week') {
-        const weekStart = getWeekStart(selectedDate)
-        query = query.gte('date', weekStart).lte('date', getWeekEnd(weekStart))
+      } else {
+        const range = getViewDateRange(view, selectedDate)
+        if (range) {
+          query = query.gte('date', range.start).lte('date', range.end)
+        } else {
+          query = query.eq('date', selectedDate)
+        }
       }
 
       const { data, error } = await query
@@ -232,9 +250,13 @@ export function ScheduleManagement({
         endDate.setDate(endDate.getDate() + 7)
         const endDateStr = getLocalDateString(endDate)
         reloadQuery = reloadQuery.gte('date', today).lte('date', endDateStr)
-      } else if (view === 'week') {
-        const weekStart = getWeekStart(selectedDate)
-        reloadQuery = reloadQuery.gte('date', weekStart).lte('date', getWeekEnd(weekStart))
+      } else {
+        const range = getViewDateRange(view, selectedDate)
+        if (range) {
+          reloadQuery = reloadQuery.gte('date', range.start).lte('date', range.end)
+        } else {
+          reloadQuery = reloadQuery.eq('date', selectedDate)
+        }
       }
 
       const { data: updatedSchedules } = await reloadQuery
@@ -326,9 +348,13 @@ export function ScheduleManagement({
         endDate.setDate(endDate.getDate() + 7)
         const endDateStr = getLocalDateString(endDate)
         reloadQuery = reloadQuery.gte('date', today).lte('date', endDateStr)
-      } else if (view === 'week') {
-        const weekStart = getWeekStart(selectedDate)
-        reloadQuery = reloadQuery.gte('date', weekStart).lte('date', getWeekEnd(weekStart))
+      } else {
+        const range = getViewDateRange(view, selectedDate)
+        if (range) {
+          reloadQuery = reloadQuery.gte('date', range.start).lte('date', range.end)
+        } else {
+          reloadQuery = reloadQuery.eq('date', selectedDate)
+        }
       }
 
       const { data: updatedSchedules } = await reloadQuery
@@ -374,7 +400,14 @@ export function ScheduleManagement({
     }
   }
 
-  const weekDays = view === 'week' ? getWeekDays(selectedDate) : []
+  const weekDays = view === 'week' ? getConsecutiveDays(getLocalDateString(), 7) : []
+  const monthGridDays = view === 'month' ? getMonthGridDays(selectedDate) : []
+  const monthWeeks: string[][] = []
+  for (let i = 0; i < monthGridDays.length; i += 7) {
+    monthWeeks.push(monthGridDays.slice(i, i + 7))
+  }
+  const displayedMonth = parseLocalDate(getMonthStart(selectedDate)).getMonth()
+  const weekdayLabels = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
 
   const filteredSchedules = view === 'personal'
     ? localSchedules.filter(s => s.family_members?.user_id === user.id)
@@ -498,13 +531,28 @@ export function ScheduleManagement({
             <button
               onClick={() => {
                 setView('week')
-                router.push(`/dashboard/schedule?view=week&date=${selectedDate}`)
+                const today = getLocalDateString()
+                setSelectedDate(today)
+                router.push('/dashboard/schedule?view=week')
               }}
               className={`btn btn-sm ${view === 'week' ? 'btn-primary' : 'btn-secondary'} flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm`}
             >
               <CalendarIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              <span className="hidden sm:inline">Vue semaine</span>
-              <span className="sm:hidden">Semaine</span>
+              <span className="hidden sm:inline">7 prochains jours</span>
+              <span className="sm:hidden">7 jours</span>
+            </button>
+            <button
+              onClick={() => {
+                setView('month')
+                const today = getLocalDateString()
+                setSelectedDate(today)
+                router.push('/dashboard/schedule?view=month')
+              }}
+              className={`btn btn-sm ${view === 'month' ? 'btn-primary' : 'btn-secondary'} flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm`}
+            >
+              <CalendarIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">Vue mois</span>
+              <span className="sm:hidden">Mois</span>
             </button>
           </div>
         )}
@@ -548,62 +596,6 @@ export function ScheduleManagement({
                 />
               </div>
             ))}
-          </div>
-        </div>
-      )}
-
-      {view === 'week' && (
-        <div className="card">
-          <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-2">
-            Semaine à visualiser
-          </label>
-          <div className="flex items-center gap-4">
-            <input
-              id="date"
-              type="date"
-              value={selectedDate}
-              onChange={(e) => {
-                setSelectedDate(e.target.value)
-                router.push(`/dashboard/schedule?view=${view}&date=${e.target.value}`)
-              }}
-              className="input"
-            />
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  const newDate = parseLocalDate(selectedDate)
-                  newDate.setDate(newDate.getDate() - 7)
-                  const newDateStr = getLocalDateString(newDate)
-                  setSelectedDate(newDateStr)
-                  router.push(`/dashboard/schedule?view=week&date=${newDateStr}`)
-                }}
-                className="btn btn-secondary"
-              >
-                ← Semaine précédente
-              </button>
-              <button
-                onClick={() => {
-                  const newDate = parseLocalDate(selectedDate)
-                  newDate.setDate(newDate.getDate() + 7)
-                  const newDateStr = getLocalDateString(newDate)
-                  setSelectedDate(newDateStr)
-                  router.push(`/dashboard/schedule?view=week&date=${newDateStr}`)
-                }}
-                className="btn btn-secondary"
-              >
-                Semaine suivante →
-              </button>
-              <button
-                onClick={() => {
-                  const today = getLocalDateString()
-                  setSelectedDate(today)
-                  router.push(`/dashboard/schedule?view=week&date=${today}`)
-                }}
-                className="btn btn-secondary"
-              >
-                Cette semaine
-              </button>
-            </div>
           </div>
         </div>
       )}
@@ -1225,39 +1217,282 @@ export function ScheduleManagement({
       )}
 
       {view === 'week' && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <h2 className="text-xl font-semibold flex items-center gap-2">
-              <CalendarIcon className="w-5 h-5" />
-              Vue semaine (ressources)
-            </h2>
-            <div className="text-sm text-gray-600">
-              {weekDays[0] &&
-                new Date(weekDays[0]).toLocaleDateString('fr-FR', {
-                  day: 'numeric',
-                  month: 'long',
-                })}{' '}
-              au{' '}
-              {weekDays[6] &&
-                new Date(weekDays[6]).toLocaleDateString('fr-FR', {
-                  day: 'numeric',
-                  month: 'long',
-                  year: 'numeric',
+        <div className="card overflow-x-auto">
+          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+            <CalendarIcon className="w-5 h-5" />
+            7 prochains jours —{' '}
+            {weekDays[0] &&
+              parseLocalDate(weekDays[0]).toLocaleDateString('fr-FR', {
+                day: 'numeric',
+                month: 'long',
+              })}{' '}
+            au{' '}
+            {weekDays[6] &&
+              parseLocalDate(weekDays[6]).toLocaleDateString('fr-FR', {
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric',
+              })}
+          </h2>
+
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr>
+                  <th className="border border-gray-300 bg-gray-100 p-3 text-left font-semibold sticky left-0 z-10 min-w-[150px]">
+                    Membre
+                  </th>
+                  {weekDays.map((day) => {
+                    const date = parseLocalDate(day)
+                    const isToday = day === getLocalDateString()
+                    return (
+                      <th
+                        key={day}
+                        className={`border border-gray-300 bg-gray-100 p-3 text-center font-semibold min-w-[10rem] ${
+                          isToday ? 'bg-primary-100' : ''
+                        }`}
+                      >
+                        <div className="font-bold">
+                          {date.toLocaleDateString('fr-FR', { weekday: 'short' })}
+                        </div>
+                        <div className="text-sm font-normal">
+                          {date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                        </div>
+                      </th>
+                    )
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {familyMembers.map((member) => {
+                  const memberSchedules = filteredSchedules.filter(
+                    (s) => s.family_member_id === member.id
+                  )
+                  const schedulesByDay = weekDays.reduce((acc: Record<string, Schedule[]>, day) => {
+                    acc[day] = memberSchedules.filter((s) => s.date === day)
+                    return acc
+                  }, {})
+
+                  return (
+                    <tr key={member.id} className="hover:bg-gray-50">
+                      <td className="border border-gray-300 bg-gray-50 p-3 sticky left-0 z-10 font-medium">
+                        {member.user_id === user.id ? (
+                          <span className="font-semibold">Vous</span>
+                        ) : (
+                          <span>
+                            {member.name || member.email || `Membre ${member.id.slice(0, 8)}`}
+                          </span>
+                        )}
+                        <span className="ml-2 text-xl">{member.avatar_url || '👤'}</span>
+                        {member.role === 'parent' && (
+                          <span className="ml-2 text-xs text-gray-500">(Parent)</span>
+                        )}
+                      </td>
+                      {weekDays.map((day) => {
+                        const daySchedules = [...(schedulesByDay[day] || [])].sort((a, b) =>
+                          a.start_time.localeCompare(b.start_time)
+                        )
+                        return (
+                          <td
+                            key={day}
+                            className="border border-gray-300 p-2 align-top min-h-[72px]"
+                          >
+                            <div className="flex flex-row flex-nowrap items-stretch gap-1.5 overflow-x-auto min-h-[56px]">
+                              {daySchedules.map((schedule: Schedule) => {
+                                const isExternal = !!schedule.subscription_id
+                                const color = isExternal
+                                  ? getSubscriptionColor(schedule.subscription_id)
+                                  : undefined
+                                const overlappingIds = getOverlappingScheduleIds(
+                                  schedule,
+                                  daySchedules
+                                )
+                                const hasOverlap = overlappingIds.length > 0
+                                const backToBackIds = getBackToBackScheduleIds(
+                                  schedule,
+                                  daySchedules
+                                )
+                                const hasBackToBack = backToBackIds.length > 0 && !hasOverlap
+
+                                return (
+                                  <div
+                                    key={schedule.id}
+                                    className={`shrink-0 min-w-[5.5rem] max-w-[9rem] rounded p-1.5 text-xs cursor-pointer transition-colors border-2 ${
+                                      hasOverlap
+                                        ? 'bg-red-500 text-white border-red-700 shadow-md'
+                                        : hasBackToBack
+                                          ? 'bg-yellow-500 text-white border-yellow-600'
+                                          : isExternal
+                                            ? 'text-white border-transparent'
+                                            : 'bg-primary-500 text-white border-primary-700 hover:bg-primary-600'
+                                    }`}
+                                    style={
+                                      isExternal && !hasOverlap && !hasBackToBack
+                                        ? { backgroundColor: color || '#3B82F6' }
+                                        : {}
+                                    }
+                                    title={`${schedule.title} - ${schedule.start_time} à ${schedule.end_time}${schedule.location ? ` - ${schedule.location}` : ''}${hasOverlap ? " (Conflit d'horaire)" : hasBackToBack ? ' (Possibilité de problème de transport)' : ''}`}
+                                  >
+                                    <div className="font-semibold truncate flex items-center gap-1">
+                                      {hasOverlap && <span>⚠️</span>}
+                                      {hasBackToBack && !hasOverlap && <span>🚗</span>}
+                                      {schedule.title}
+                                    </div>
+                                    <div className="truncate">
+                                      {schedule.start_time} - {schedule.end_time}
+                                    </div>
+                                    {schedule.location && (
+                                      <div className="text-xs opacity-75 flex items-center gap-1 mt-1">
+                                        <MapPin className="w-3 h-3" />
+                                        <span className="truncate">{schedule.location}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  )
                 })}
-            </div>
+              </tbody>
+            </table>
           </div>
 
-          <ScheduleResourceScheduler
-            currentUserId={user.id}
-            isParent={isParent}
-            selectedDate={selectedDate}
-            familyMembers={familyMembers}
-            schedules={filteredSchedules}
-            onSchedulesChange={(next) => {
-              // Met à jour la source locale; le filtrage (view personal) est géré plus haut via filteredSchedules
-              setLocalSchedules(next)
-            }}
-          />
+          {familyMembers.length === 0 && (
+            <p className="text-center text-gray-500 py-8">
+              Aucun membre dans la famille pour afficher les horaires
+            </p>
+          )}
+        </div>
+      )}
+
+      {view === 'month' && (
+        <div className="card overflow-hidden p-0">
+          <div className="flex items-center justify-between gap-3 p-4 border-b border-gray-200">
+            <button
+              type="button"
+              onClick={() => {
+                const newDate = addMonths(getMonthStart(selectedDate), -1)
+                setSelectedDate(newDate)
+                router.push(`/dashboard/schedule?view=month&date=${newDate}`)
+              }}
+              className="btn btn-sm btn-secondary p-2"
+              title="Mois précédent"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <h2 className="text-xl font-semibold capitalize flex items-center gap-2">
+              <CalendarIcon className="w-5 h-5" />
+              {formatMonthYear(selectedDate)}
+            </h2>
+            <button
+              type="button"
+              onClick={() => {
+                const newDate = addMonths(getMonthStart(selectedDate), 1)
+                setSelectedDate(newDate)
+                router.push(`/dashboard/schedule?view=month&date=${newDate}`)
+              }}
+              className="btn btn-sm btn-secondary p-2"
+              title="Mois suivant"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="flex flex-wrap gap-3 px-4 py-3 border-b border-gray-100 bg-gray-50 text-sm">
+            {familyMembers.map((member) => (
+              <div key={member.id} className="flex items-center gap-1.5">
+                <span className="text-base">{member.avatar_url || '👤'}</span>
+                <span className="font-medium">
+                  {member.user_id === user.id
+                    ? 'Vous'
+                    : member.name || member.email || `Membre ${member.id.slice(0, 8)}`}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div className="overflow-x-auto">
+            <div className="min-w-[640px]">
+              <div className="grid grid-cols-7 border-b border-gray-200 bg-gray-100">
+                {weekdayLabels.map((label) => (
+                  <div
+                    key={label}
+                    className="p-2 text-center text-xs sm:text-sm font-semibold text-gray-700 border-r border-gray-200 last:border-r-0"
+                  >
+                    {label}
+                  </div>
+                ))}
+              </div>
+
+              {monthWeeks.map((week, weekIndex) => (
+                <div key={weekIndex} className="grid grid-cols-7 border-b border-gray-200 last:border-b-0">
+                  {week.map((day) => {
+                    const dayDate = parseLocalDate(day)
+                    const isCurrentMonth = dayDate.getMonth() === displayedMonth
+                    const isToday = day === getLocalDateString()
+                    const daySchedules = filteredSchedules
+                      .filter((s) => s.date === day)
+                      .sort((a, b) => a.start_time.localeCompare(b.start_time))
+                    const visibleSchedules = daySchedules.slice(0, 4)
+                    const hiddenCount = daySchedules.length - visibleSchedules.length
+
+                    return (
+                      <div
+                        key={day}
+                        className={`min-h-[7rem] sm:min-h-[8.5rem] p-1.5 border-r border-gray-200 last:border-r-0 align-top ${
+                          isCurrentMonth ? 'bg-white' : 'bg-gray-50'
+                        } ${isToday ? 'ring-2 ring-inset ring-primary-400' : ''}`}
+                      >
+                        <div
+                          className={`text-xs sm:text-sm font-semibold mb-1 ${
+                            isCurrentMonth ? 'text-gray-900' : 'text-gray-400'
+                          } ${isToday ? 'text-primary-700' : ''}`}
+                        >
+                          {dayDate.getDate()}
+                        </div>
+                        <div className="space-y-1">
+                          {visibleSchedules.map((schedule) => {
+                            const isExternal = !!schedule.subscription_id
+                            const color = isExternal
+                              ? getSubscriptionColor(schedule.subscription_id)
+                              : undefined
+
+                            return (
+                              <div
+                                key={schedule.id}
+                                className={`rounded px-1 py-0.5 text-[10px] sm:text-xs leading-tight truncate border ${
+                                  isExternal
+                                    ? 'text-white border-transparent'
+                                    : 'bg-primary-500 text-white border-primary-600'
+                                }`}
+                                style={
+                                  isExternal ? { backgroundColor: color || '#3B82F6' } : undefined
+                                }
+                                title={`${getMemberName(schedule.family_member_id)} — ${schedule.title} (${formatScheduleTime(schedule.start_time)} - ${formatScheduleTime(schedule.end_time)})`}
+                              >
+                                <span className="mr-0.5">{getMemberAvatar(schedule.family_member_id)}</span>
+                                <span className="font-medium">{formatScheduleTime(schedule.start_time)}</span>{' '}
+                                {schedule.title}
+                              </div>
+                            )
+                          })}
+                          {hiddenCount > 0 && (
+                            <div className="text-[10px] sm:text-xs text-gray-500 font-medium px-0.5">
+                              +{hiddenCount} autre{hiddenCount > 1 ? 's' : ''}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 

@@ -3,8 +3,8 @@ import { redirect } from 'next/navigation'
 import { ScheduleManagement } from '@/components/ScheduleManagement'
 import {
   getLocalDateString,
-  getWeekStart,
-  getWeekEnd,
+  getConsecutiveDayRange,
+  getMonthGridRange,
 } from '@/lib/schedule/dateUtils'
 
 async function getUserFamily(supabase: any, userId: string) {
@@ -29,8 +29,7 @@ async function getFamilyMembers(supabase: any, familyId: string) {
 async function getSchedules(
   supabase: any, 
   familyMemberIds: string[], 
-  date?: string, 
-  weekStart?: string,
+  date?: string,
   dateRange?: { start: string; end: string }
 ) {
   if (familyMemberIds.length === 0) {
@@ -47,8 +46,6 @@ async function getSchedules(
     query = query.gte('date', dateRange.start).lte('date', dateRange.end)
   } else if (date) {
     query = query.eq('date', date)
-  } else if (weekStart) {
-    query = query.gte('date', weekStart).lte('date', getWeekEnd(weekStart))
   }
 
   const { data, error } = await query.order('date', { ascending: true }).order('start_time', { ascending: true })
@@ -91,19 +88,21 @@ export default async function SchedulePage({
   endDate.setDate(endDate.getDate() + 7)
   const endDateStr = getLocalDateString(endDate)
 
-  const weekStart = view === 'week' ? getWeekStart(selectedDate) : undefined
+  const weekDateRange =
+    view === 'week' ? getConsecutiveDayRange(today, 7) : undefined
   const familyDateRange = view === 'family' ? { start: today, end: endDateStr } : undefined
+  const monthDateRange =
+    view === 'month' ? getMonthGridRange(selectedDate) : undefined
 
   const schedules = await getSchedules(
     supabase,
     familyMemberIds,
-    view === 'family' ? undefined : view === 'week' ? undefined : selectedDate,
-    weekStart,
-    familyDateRange
+    view === 'family' || view === 'week' || view === 'month' ? undefined : selectedDate,
+    familyDateRange ?? weekDateRange ?? monthDateRange
   )
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <div className={view === 'month' ? 'max-w-7xl mx-auto' : 'max-w-6xl mx-auto'}>
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-2">Gestion des horaires</h1>
       </div>
