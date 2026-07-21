@@ -550,7 +550,7 @@ class _ScheduleModalState extends State<_ScheduleModal> {
               const SizedBox(height: 16),
               if (widget.isParent)
                 DropdownButtonFormField<String>(
-                  value: _selectedMemberId,
+                  initialValue: _selectedMemberId,
                   decoration: const InputDecoration(
                     labelText: 'Membre',
                     border: OutlineInputBorder(),

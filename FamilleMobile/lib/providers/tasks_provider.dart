@@ -83,10 +83,10 @@ class TasksProvider with ChangeNotifier {
 
   void _handleTaskChange(PostgresChangePayload payload) {
     // Filtrer pour ne garder que les tâches créées par l'utilisateur ou assignées à l'utilisateur
-    final shouldIncludeTask = (Task task) {
+    bool shouldIncludeTask(Task task) {
       if (_currentUserId == null || _currentFamilyMemberId == null) return false;
       return task.createdBy == _currentUserId || task.assignedTo == _currentFamilyMemberId;
-    };
+    }
 
     switch (payload.eventType) {
       case PostgresChangeEvent.insert:

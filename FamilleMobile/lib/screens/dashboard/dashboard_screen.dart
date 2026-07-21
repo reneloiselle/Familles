@@ -44,8 +44,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       bottomNavigationBar: Theme(
         data: Theme.of(context).copyWith(
           navigationBarTheme: NavigationBarThemeData(
-            labelTextStyle: MaterialStateProperty.resolveWith((states) {
-              if (states.contains(MaterialState.selected)) {
+            labelTextStyle: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.selected)) {
                 return const TextStyle(fontSize: 11);
               }
               return const TextStyle(fontSize: 11);
@@ -195,7 +195,7 @@ class DashboardHomeScreen extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF3b82f6).withOpacity(0.1),
+                          color: const Color(0xFF3b82f6).withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: const Icon(

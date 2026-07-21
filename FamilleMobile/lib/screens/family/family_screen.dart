@@ -544,7 +544,7 @@ class _InvitationCard extends StatelessWidget {
           children: [
             Chip(
               label: Text(statusText),
-              backgroundColor: statusColor.withOpacity(0.2),
+              backgroundColor: statusColor.withValues(alpha: 0.2),
               labelStyle: TextStyle(color: statusColor),
               padding: EdgeInsets.zero,
             ),
@@ -589,8 +589,8 @@ class _MemberCard extends StatelessWidget {
       child: ListTile(
         leading: CircleAvatar(
           backgroundColor: member.isParent
-              ? const Color(0xFF3b82f6).withOpacity(0.2)
-              : Colors.grey.withOpacity(0.2),
+              ? const Color(0xFF3b82f6).withValues(alpha: 0.2)
+              : Colors.grey.withValues(alpha: 0.2),
           child: Icon(
             member.isParent ? Icons.person : Icons.child_care,
             color: member.isParent ? const Color(0xFF3b82f6) : Colors.grey,

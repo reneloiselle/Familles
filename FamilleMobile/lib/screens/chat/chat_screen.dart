@@ -983,7 +983,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     top: 0,
                     child: Container(
                       padding: const EdgeInsets.all(2),
-                      decoration: BoxDecoration(
+                      decoration: const BoxDecoration(
                         color: Colors.green,
                         shape: BoxShape.circle,
                       ),
@@ -1400,7 +1400,7 @@ class _ChatScreenState extends State<ChatScreen> {
               color: Theme.of(context).scaffoldBackgroundColor,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
+                  color: Colors.black.withValues(alpha: 0.1),
                   blurRadius: 4,
                   offset: const Offset(0, -2),
                 ),
@@ -1436,7 +1436,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                 ),
                               ),
                               const SizedBox(width: 8),
-                              Expanded(
+                              const Expanded(
                                 child: Text(
                                   'Écoute en cours...',
                                   style: TextStyle(
@@ -1480,12 +1480,12 @@ class _ChatScreenState extends State<ChatScreen> {
                                     minimumSize: Size.zero,
                                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                   ),
-                                  child: Row(
+                                  child: const Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      const Icon(Icons.check, size: 14),
-                                      const SizedBox(width: 4),
-                                      const Text('OK', style: TextStyle(fontSize: 12)),
+                                      Icon(Icons.check, size: 14),
+                                      SizedBox(width: 4),
+                                      Text('OK', style: TextStyle(fontSize: 12)),
                                     ],
                                   ),
                                 ),
@@ -1498,12 +1498,12 @@ class _ChatScreenState extends State<ChatScreen> {
                                   minimumSize: Size.zero,
                                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                 ),
-                                child: Row(
+                                child: const Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    const Icon(Icons.stop, size: 14),
-                                    const SizedBox(width: 4),
-                                    const Text('Stop', style: TextStyle(fontSize: 12)),
+                                    Icon(Icons.stop, size: 14),
+                                    SizedBox(width: 4),
+                                    Text('Stop', style: TextStyle(fontSize: 12)),
                                   ],
                                 ),
                               ),
@@ -1747,11 +1747,11 @@ class _TTSSettingsDialogState extends State<_TTSSettingsDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Row(
+      title: const Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.record_voice_over),
-          const SizedBox(width: 8),
+          Icon(Icons.record_voice_over),
+          SizedBox(width: 8),
           Flexible(
             child: Text(
               'Paramètres vocaux',
@@ -1891,11 +1891,11 @@ class _TTSSettingsDialogState extends State<_TTSSettingsDialog> {
             ),
             const SizedBox(height: 8),
             TextField(
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 labelText: 'Longueur minimale (mots)',
                 hintText: '0 = pas de limite',
                 helperText: 'Ne pas lire automatiquement si le texte a moins de mots',
-                border: const OutlineInputBorder(),
+                border: OutlineInputBorder(),
               ),
               keyboardType: TextInputType.number,
               controller: _minLengthController,
@@ -1907,11 +1907,11 @@ class _TTSSettingsDialogState extends State<_TTSSettingsDialog> {
             ),
             const SizedBox(height: 16),
             TextField(
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 labelText: 'Longueur maximale (caractères)',
                 hintText: '5000',
                 helperText: 'Limite pour éviter les coûts excessifs',
-                border: const OutlineInputBorder(),
+                border: OutlineInputBorder(),
               ),
               keyboardType: TextInputType.number,
               controller: _maxLengthController,

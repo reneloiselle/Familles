@@ -276,7 +276,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                           const Text('Où le trouver', style: TextStyle(fontWeight: FontWeight.bold)),
                           const SizedBox(height: 8),
                           DropdownButtonFormField<String>(
-                            value: _placementStoreId,
+                            initialValue: _placementStoreId,
                             decoration: const InputDecoration(border: OutlineInputBorder()),
                             hint: const Text('Magasin'),
                             items: _stores

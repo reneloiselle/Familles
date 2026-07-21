@@ -660,7 +660,7 @@ class _ListItemsViewState extends State<_ListItemsView> {
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(16),
-                  color: _parseColor(widget.list.color).withOpacity(0.1),
+                  color: _parseColor(widget.list.color).withValues(alpha: 0.1),
                   child: Text(
                     widget.list.description!,
                     style: TextStyle(color: Colors.grey[700]),
